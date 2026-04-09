@@ -1,6 +1,6 @@
 # PhytoPi
 
-An intelligent IoT-based plant monitoring and control system. PhytoPi combines a Raspberry Pi sensor controller with a Flutter kiosk dashboard and a Supabase cloud backend to automate plant cultivation with minimal human intervention.
+PhytoPi is an intelligent IoT-based controlled environment system for autonomous plant cultivation. Built on a Raspberry Pi 5 embedded controller, a Flutter kiosk dashboard, and a Supabase cloud backend, the system automates lighting, watering, and climate regulation with minimal human intervention. A live camera feed drives a two-stage machine learning pipeline for continuous AI-powered plant health analysis and growth monitoring.
 
 ---
 

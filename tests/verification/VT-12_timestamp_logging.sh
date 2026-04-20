@@ -29,6 +29,13 @@ for i in $(seq 1 10); do
         "$SUPABASE_SERVICE_ROLE_KEY" \
         "{\"device_id\":\"$SUPABASE_DEVICE_ID\",\"command_type\":\"toggle_light\",\"payload\":{\"state\":false,\"vt12_trial\":$i},\"status\":\"executed\"}"
     ID=$(get_json_field "$HTTP_BODY" "id")
+    # Fallback if POST returned no body
+    if [[ -z "$ID" ]]; then
+        http_call GET \
+            "$SUPABASE_URL/rest/v1/device_commands?device_id=eq.$SUPABASE_DEVICE_ID&order=created_at.desc&limit=1&select=id" \
+            "$SUPABASE_SERVICE_ROLE_KEY"
+        ID=$(get_json_field "$HTTP_BODY" "id")
+    fi
     INSERTED_IDS+=("$ID")
 done
 echo "Done. Running retrieval trials..."

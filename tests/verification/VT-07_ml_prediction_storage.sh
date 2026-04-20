@@ -23,6 +23,12 @@ echo "Spec: prediction stored and retrievable in < ${SPEC_MS}ms"
 echo "Using service role key (same privilege level as AI worker)."
 echo ""
 
+# Warmup request to establish connection (cold-start excluded from timing)
+printf "Warming up connection... "
+http_call GET "$SUPABASE_URL/rest/v1/ml_inferences?limit=1&select=id" "$SUPABASE_SERVICE_ROLE_KEY"
+echo "done"
+echo ""
+
 TIMES=""; PASS=0; FAIL=0
 INSERTED_IDS=""
 

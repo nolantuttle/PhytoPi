@@ -13,8 +13,10 @@ RESULTS_CSV="$RESULTS_DIR/VT-09_results.csv"
 EVIDENCE_TXT="$RESULTS_DIR/VT-09_evidence.txt"
 SPEC_MS=1000
 
-# Endpoint that truly requires auth (401 without token)
+# Auth endpoint for no-token/invalid-token tests (returns 401)
 AUTH_ENDPOINT="$SUPABASE_URL/auth/v1/user"
+# PostgREST endpoint for valid-token test (service role returns 200 here)
+DATA_ENDPOINT="$SUPABASE_URL/rest/v1/device_units?limit=1&select=id"
 
 init_results "$RESULTS_CSV" "trial_num,scenario,expected_code,actual_code,response_ms,pass_fail"
 > "$EVIDENCE_TXT"
@@ -86,9 +88,9 @@ for i in $(seq 1 10); do
     printf "  B%d: code=%s %dms %s\n" "$i" "$CODE" "$MS" "$VERDICT"
 done
 
-# --- Scenario C: Valid token (service role) → expect 200 ---
+# --- Scenario C: Valid token (service role) → expect 200 from PostgREST ---
 echo ""
-echo "--- Scenario C: Valid service role token (expect 200) ---"
+echo "--- Scenario C: Valid service role token on PostgREST (expect 200) ---"
 for i in $(seq 1 10); do
     (( TRIAL++ )) || true
     tmp=$(mktemp)
@@ -96,11 +98,11 @@ for i in $(seq 1 10); do
     CODE=$(curl -s -w "%{http_code}" -o "$tmp" \
         -H "apikey: $SUPABASE_ANON_KEY" \
         -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY" \
-        "$AUTH_ENDPOINT" 2>/dev/null)
+        "$DATA_ENDPOINT" 2>/dev/null)
     MS=$(( ($(date +%s%N) - T0) / 1000000 ))
     rm -f "$tmp"
 
-    if [[ ( "$CODE" == "200" || "$CODE" == "403" ) && $MS -lt $SPEC_MS ]]; then
+    if [[ "$CODE" == "200" && $MS -lt $SPEC_MS ]]; then
         VERDICT="PASS"; (( PASS++ )) || true
     else
         VERDICT="FAIL"; (( FAIL++ )) || true

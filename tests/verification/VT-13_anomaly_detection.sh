@@ -116,11 +116,18 @@ for TRIAL in $(seq 1 20); do
 
     if [[ "$LABEL" == "abnormal" ]]; then
         (( ABNORMAL_COUNT++ )) || true
-        # Simulate firmware: insert the alert it would have generated
-        http_call POST "$SUPABASE_URL/rest/v1/alerts" "$SUPABASE_ANON_KEY" \
+        # Simulate firmware: insert the alert it would have generated (service role ensures insert succeeds)
+        http_call POST "$SUPABASE_URL/rest/v1/alerts" "$SUPABASE_SERVICE_ROLE_KEY" \
             "{\"device_id\":\"$SUPABASE_DEVICE_ID\",\"type\":\"$ATYPE\",\"message\":\"[VT-13 T$TRIAL] $SENSOR=$VALUE outside threshold\",\"severity\":\"high\",\"source\":\"automated\",\"triggered_at\":\"$TS\"}"
         ALERT_MS=$HTTP_MS
         ALERT_ID=$(get_json_field "$HTTP_BODY" "id")
+        # Fallback if POST returned no body
+        if [[ -z "$ALERT_ID" ]]; then
+            http_call GET \
+                "$SUPABASE_URL/rest/v1/alerts?device_id=eq.$SUPABASE_DEVICE_ID&order=triggered_at.desc&limit=1&select=id" \
+                "$SUPABASE_SERVICE_ROLE_KEY"
+            ALERT_ID=$(get_json_field "$HTTP_BODY" "id")
+        fi
         LATENCY_MS=$(( READ_MS + ALERT_MS ))
         GOT_ALERT=$([[ -n "$ALERT_ID" ]] && echo "true" || echo "false")
         log_evidence "$EVIDENCE_TXT" "Trial $TRIAL | ABNORMAL $SENSOR=$VALUE | alert_id=$ALERT_ID | ${LATENCY_MS}ms"
@@ -128,7 +135,7 @@ for TRIAL in $(seq 1 20); do
         # Resolve immediately to avoid notification spam
         [[ -n "$ALERT_ID" ]] && http_call_prefer PATCH \
             "$SUPABASE_URL/rest/v1/alerts?id=eq.$ALERT_ID" \
-            "$SUPABASE_ANON_KEY" \
+            "$SUPABASE_SERVICE_ROLE_KEY" \
             "{\"resolved_at\":\"$(now_iso)\"}" "return=minimal"
     else
         log_evidence "$EVIDENCE_TXT" "Trial $TRIAL | NORMAL $SENSOR=$VALUE | reading_ms=$READ_MS"

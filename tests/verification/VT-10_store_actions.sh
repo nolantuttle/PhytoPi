@@ -47,6 +47,14 @@ for TRIAL in $(seq 1 10); do
     POST_MS=$HTTP_MS
     RECORD_ID=$(get_json_field "$HTTP_BODY" "id")
 
+    # Fallback: if POST returned no body (return=minimal default), fetch last inserted row
+    if [[ -z "$RECORD_ID" ]]; then
+        http_call GET \
+            "$SUPABASE_URL/rest/v1/device_commands?device_id=eq.$SUPABASE_DEVICE_ID&order=created_at.desc&limit=1" \
+            "$SUPABASE_SERVICE_ROLE_KEY"
+        RECORD_ID=$(get_json_field "$HTTP_BODY" "id")
+    fi
+
     # GET back and verify all required fields present
     http_call GET \
         "$SUPABASE_URL/rest/v1/device_commands?id=eq.$RECORD_ID" \

@@ -1,3 +1,3 @@
-[submodule "PhytoPI_Controler/libs/bme68x"]
-	path = PhytoPI_Controler/libs/bme68x
+[submodule "controller/lib/BME68x_SensorAPI"]
+	path = controller/lib/BME68x_SensorAPI
 	url = https://github.com/boschsensortec/BME68x-Sensor-API

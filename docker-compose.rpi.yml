@@ -1,10 +1,10 @@
 version: "3.9"
 
 services:
-  # Core sensor/actuator loop compiled from PhytoPI_Controler C code
+  # Core sensor/actuator loop compiled from controller C code
   sensors:
     build:
-      context: ./PhytoPI_Controler
+      context: ./controller
       dockerfile: ./Dockerfile.sensors
     container_name: phytopi-sensors
     restart: unless-stopped
@@ -23,7 +23,7 @@ services:
       SUPABASE_GAS_SENSOR_ID: ${SUPABASE_GAS_SENSOR_ID}
       SUPABASE_WATER_LEVEL_PHOTOELECTRIC_SENSOR_ID: ${SUPABASE_WATER_LEVEL_PHOTOELECTRIC_SENSOR_ID}
       PHYTOPI_DB_PATH: /data/sensor_data.db
-      CAPTURE_SCRIPT_PATH: /app/PhytoPI_Controler/scripts/capture_and_upload.py
+      CAPTURE_SCRIPT_PATH: /app/controller/scripts/capture_and_upload.py
     volumes:
       # Persistent database/log storage
       - phytopi-data:/data
@@ -40,7 +40,7 @@ services:
   # so it is NOT started by 'docker compose up'.
   ui:
     build:
-      context: ./User_Interface
+      context: ./user_interface
       dockerfile: ./Dockerfile.ui
     container_name: phytopi-ui
     profiles: [disabled]
@@ -49,7 +49,7 @@ services:
       DISPLAY: ":0"
       XAUTHORITY: /root/.Xauthority
     volumes:
-      - ./User_Interface/build/linux/arm64/release/bundle:/app/bundle:ro
+      - ./user_interface/build/linux/arm64/release/bundle:/app/bundle:ro
       - /tmp/.X11-unix:/tmp/.X11-unix
       - /home/phytopi/.Xauthority:/root/.Xauthority:ro
     devices:
@@ -60,7 +60,7 @@ services:
   # MJPEG camera streaming service
   camera:
     build:
-      context: ./PhytoPI_Controler
+      context: ./controller
       dockerfile: ./Dockerfile.camera
     container_name: phytopi-camera
     restart: unless-stopped

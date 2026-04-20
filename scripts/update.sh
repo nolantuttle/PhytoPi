@@ -4,7 +4,7 @@
 #
 # What it does on each run:
 #   1. git pull (if new commits exist)
-#   2. User_Interface/** changed  → flutter build linux  (ui container auto-restarts via inotifywait)
+#   2. user_interface/** changed  → flutter build linux  (ui container auto-restarts via inotifywait)
 #   3. Controller/camera/ai/updater sources changed → docker compose build + up -d that service
 set -euo pipefail
 
@@ -36,7 +36,7 @@ echo "$CHANGED" | sed 's/^/    /'
 git pull --ff-only --quiet
 
 # ── 2. UI: rebuild Flutter Linux bundle if dart/assets changed ────────────────
-UI_FILES=$(echo "$CHANGED" | grep -c "^User_Interface/" || true)
+UI_FILES=$(echo "$CHANGED" | grep -c "^user_interface/" || true)
 if [ "$UI_FILES" -gt 0 ]; then
   log "UI source changed ($UI_FILES file(s)) – rebuilding Flutter Linux bundle..."
 
@@ -59,9 +59,9 @@ if [ "$UI_FILES" -gt 0 ]; then
 
   # Load credentials: .env first (device-specific), then .env.kiosk (UI-specific)
   load_env "$PHYTO_DIR/.env"
-  load_env "$PHYTO_DIR/User_Interface/.env.kiosk"
+  load_env "$PHYTO_DIR/user_interface/.env.kiosk"
 
-  cd "$PHYTO_DIR/User_Interface"
+  cd "$PHYTO_DIR/user_interface"
   "$FLUTTER" build linux --release \
     --dart-define=SUPABASE_URL="${SUPABASE_URL:-}" \
     --dart-define=SUPABASE_ANON_KEY="${SUPABASE_ANON_KEY:-}" \
@@ -81,13 +81,13 @@ rebuild() {
   $COMPOSE_CMD -f "$COMPOSE_FILE" up -d "$svc"
 }
 
-echo "$CHANGED" | grep -qE "^PhytoPI_Controler/(Dockerfile\.sensors|src/|libs/)" \
+echo "$CHANGED" | grep -qE "^controller/(Dockerfile\.sensors|src/|libs/)" \
   && rebuild sensors || true
 
-echo "$CHANGED" | grep -qE "^PhytoPI_Controler/(Dockerfile\.camera|scripts/stream)" \
+echo "$CHANGED" | grep -qE "^controller/(Dockerfile\.camera|scripts/stream)" \
   && rebuild camera || true
 
-echo "$CHANGED" | grep -qE "^PhytoPI_Controler/(Dockerfile\.ai|scripts/ai_worker)" \
+echo "$CHANGED" | grep -qE "^controller/(Dockerfile\.ai|scripts/ai_worker)" \
   && rebuild ai || true
 
 echo "$CHANGED" | grep -qE "^docker/updater/" \

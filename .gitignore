@@ -37,6 +37,8 @@ node_modules/
 .env.development.local
 .env.test.local
 .env.production.local
+.env.backup
+*.env.backup
 
 # Build outputs
 dist/
@@ -57,3 +59,21 @@ build/
 # Solidworks Files
 *.SLDPRT
 *.SLDASM
+
+# Cursor AI
+.cursor/
+
+# Flutter generated
+.metadata
+
+# Archives / build artifacts
+*.tar.gz
+
+# Python bytecode
+__pycache__/
+*.pyc
+
+# KiCad auto-generated
+*-backups/
+*.lck
+fp-info-cache

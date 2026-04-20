@@ -4,10 +4,10 @@
 
 - **Host OS**: Raspberry Pi OS Lite.
 - **Services (containers)**:
-  - `sensors`: compiled C controller from `PhytoPI_Controler` (GPIO/I²C, Supabase sync).
+  - `sensors`: compiled C controller from `controller` (GPIO/I²C, Supabase sync).
   - `camera`: MJPEG streaming server (`stream_camera_web.py`).
   - `ai`: AI worker (`ai_worker.py`) – optional on the Pi; can also run on a more powerful machine.
-  - `ui`: static web UI from `User_Interface/web/index.html`.
+  - `ui`: static web UI from `user_interface/web/index.html`.
   - `updater`: small Alpine-based container that periodically runs `docker compose pull` and `up` on the Pi.
 
 All project logic lives inside these containers; the host OS just runs Docker and systemd units.

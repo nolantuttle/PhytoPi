@@ -49,7 +49,7 @@ MAX_RECOVERY_AGE_SECONDS = int(os.environ.get("AI_JOB_MAX_RECOVERY_AGE_SECONDS",
 # ---------------------------------------------------------------------------
 def _load_dotenv():
     candidates = [
-        Path(__file__).parent.parent / ".env",   # PhytoPI_Controler/.env
+        Path(__file__).parent.parent / ".env",   # controller/.env
         Path(__file__).parent / ".env",            # scripts/.env
         Path(".env"),                              # cwd/.env
     ]

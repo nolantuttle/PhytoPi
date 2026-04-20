@@ -1,7 +1,7 @@
 COMPOSE      := docker compose -f docker-compose.rpi.yml
 COMPOSE_P    := $(COMPOSE) -p phytopi
 FLUTTER      := /home/phytopi/flutter/bin/flutter
-ENV_KIOSK    := User_Interface/.env.kiosk
+ENV_KIOSK    := user_interface/.env.kiosk
 
 .PHONY: help \
         up down restart logs \
@@ -110,7 +110,7 @@ logs-camera:
 # After this finishes, inotifywait inside the ui container auto-restarts the app.
 build-ui:
 	@set -a; . ./$(ENV_KIOSK); set +a; \
-	cd User_Interface && $(FLUTTER) build linux --release \
+	cd user_interface && $(FLUTTER) build linux --release \
 	  --dart-define=SUPABASE_URL="$$SUPABASE_URL" \
 	  --dart-define=SUPABASE_ANON_KEY="$$SUPABASE_ANON_KEY" \
 	  --dart-define=KIOSK_MODE=true \

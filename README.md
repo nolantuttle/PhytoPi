@@ -40,8 +40,8 @@ sudo systemctl restart phytopi-ui.service
 sudo systemctl status  phytopi-ui.service
 
 # Rebuild the Flutter bundle (load env first — see "Rebuilding the system")
-cd /home/phytopi/PhytoPi/User_Interface
-set -a && source /home/phytopi/PhytoPi/User_Interface/.env.kiosk && set +a
+cd /home/phytopi/PhytoPi/user_interface
+set -a && source /home/phytopi/PhytoPi/user_interface/.env.kiosk && set +a
 /home/phytopi/flutter/bin/flutter pub get
 /home/phytopi/flutter/bin/flutter build linux --release \
   --dart-define=KIOSK_MODE=true \
@@ -88,10 +88,10 @@ Use the row that matches what you changed. For a **full release** (database + fi
 | You changed | Rebuild / deploy |
 |-------------|------------------|
 | SQL under `data/supabase/migrations/`, or Edge Functions under `data/supabase/functions/` | **A. Supabase** (`db push`, deploy functions, secrets, webhooks) |
-| C sources or Dockerfiles under `PhytoPI_Controler/` (sensors container) | **B. Docker** — `sensors` service |
-| `Dockerfile.camera` or camera scripts in `PhytoPI_Controler/` | **B. Docker** — `camera` service |
+| C sources or Dockerfiles under `controller/` (sensors container) | **B. Docker** — `sensors` service |
+| `Dockerfile.camera` or camera scripts in `controller/` | **B. Docker** — `camera` service |
 | `docker/updater/` or updater compose service | **B. Docker** — `updater` service |
-| Flutter under `User_Interface/` | **C. Flutter kiosk** |
+| Flutter under `user_interface/` | **C. Flutter kiosk** |
 
 The systemd unit [`systemd/docker-compose-phytopi.service`](systemd/docker-compose-phytopi.service) uses **`COMPOSE_PROJECT_NAME=phytopi`**, so use **`-p phytopi`** with `docker compose` to match running containers.
 
@@ -138,7 +138,7 @@ From the repo root, with `.env` present (Supabase URL, keys, device and sensor U
 ```bash
 cd /home/phytopi/PhytoPi
 
-# Sensors / controller (after PhytoPI_Controler or Dockerfile.sensors changes)
+# Sensors / controller (after controller or Dockerfile.sensors changes)
 docker compose -p phytopi -f docker-compose.rpi.yml build sensors
 docker compose -p phytopi -f docker-compose.rpi.yml up -d sensors
 
@@ -160,8 +160,8 @@ docker compose -p phytopi -f docker-compose.rpi.yml up -d updater
 `SUPABASE_URL`, `SUPABASE_ANON_KEY`, and `KIOSK_MODE` are baked in at **compile time** (`--dart-define`). Optional: `PHYTOPI_STREAM_URL` for the camera MJPEG URL (default in code is `http://phytopi.local:8000/stream.mjpg`).
 
 ```bash
-set -a && source /home/phytopi/PhytoPi/User_Interface/.env.kiosk && set +a
-cd /home/phytopi/PhytoPi/User_Interface
+set -a && source /home/phytopi/PhytoPi/user_interface/.env.kiosk && set +a
+cd /home/phytopi/PhytoPi/user_interface
 /home/phytopi/flutter/bin/flutter pub get
 /home/phytopi/flutter/bin/flutter build linux --release \
   --dart-define=SUPABASE_URL="$SUPABASE_URL" \
@@ -172,7 +172,7 @@ sudo systemctl restart phytopi-ui.service
 
 ### Automated pull-based update (optional)
 
-After `git pull`, this script rebuilds the Linux UI when `User_Interface/**` changed and rebuilds Docker services when controller/camera/updater paths changed:
+After `git pull`, this script rebuilds the Linux UI when `user_interface/**` changed and rebuilds Docker services when controller/camera/updater paths changed:
 
 ```bash
 cd /home/phytopi/PhytoPi
@@ -187,9 +187,9 @@ It does **not** run `supabase db push` or deploy Edge Functions—you still do *
 
 ```
 PhytoPi/
-├── User_Interface/          # Flutter Dashboard (Web, Mobile, Kiosk)
-├── PhytoPI_Controler/       # Raspberry Pi controller sources (Docker build context for Pi stack)
-├── controller/              # Same controller tree tracked in git (keep in sync with PhytoPI_Controler when developing)
+├── user_interface/          # Flutter Dashboard (Web, Mobile, Kiosk)
+├── controller/       # Raspberry Pi controller sources (Docker build context for Pi stack)
+├── controller/              # Same controller tree tracked in git (keep in sync with controller when developing)
 ├── data/supabase/           # Supabase config, migrations, Edge Functions
 └── systemd/                 # Boot units for Docker stack + native kiosk UI
 ```
@@ -233,7 +233,7 @@ PostgreSQL-based backend that provides:
 
 1. **Navigate to the User Interface directory:**
    ```bash
-   cd User_Interface
+   cd user_interface
    ```
 
 2. **Install Flutter dependencies:**
@@ -245,7 +245,7 @@ PostgreSQL-based backend that provides:
    ```bash
    ./scripts/utils/setup_env.sh web
    ```
-   See `User_Interface/docs/configuration/ENV_SETUP.md` for detailed configuration.
+   See `user_interface/docs/configuration/ENV_SETUP.md` for detailed configuration.
 
 4. **Run the development server:**
    ```bash
@@ -283,7 +283,7 @@ The controller runs as a Docker container (`phytopi-sensors`). It is built autom
 
 2. **Start the stack** (see Quick Reference above).
 
-For detailed controller setup, see `PhytoPI_Controler/README.md`.
+For detailed controller setup, see `controller/README.md`.
 
 ## Features
 
@@ -300,8 +300,8 @@ For detailed controller setup, see `PhytoPI_Controler/README.md`.
 
 Comprehensive documentation is available in each component directory:
 
-- **User Interface**: See `User_Interface/docs/` for platform guides, deployment instructions, and configuration
-- **Controller**: See `PhytoPI_Controler/README.md` and `PhytoPI_Controler/TESTING_GUIDE.md`
+- **User Interface**: See `user_interface/docs/` for platform guides, deployment instructions, and configuration
+- **Controller**: See `controller/README.md` and `controller/TESTING_GUIDE.md`
 - **Infrastructure**: See `data/supabase/` for database schema, migrations, Edge Functions, and setup guides
 
 ## Development

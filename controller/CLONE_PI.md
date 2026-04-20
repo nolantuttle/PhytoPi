@@ -11,7 +11,7 @@ Clone your PhytoPi setup to a second Raspberry Pi with identical configuration a
 ## Quick Clone (from development machine)
 
 ```bash
-cd PhytoPI_Controler
+cd controller
 make
 ./scripts/clone_pi.sh
 # Copy the generated .tar.gz to the second Pi
@@ -22,7 +22,7 @@ make
 ### 1. Export from Source Pi (or dev machine)
 
 ```bash
-cd /path/to/PhytoPi/PhytoPI_Controler
+cd /path/to/PhytoPi/controller
 make
 ./scripts/clone_pi.sh ~/phytopi_clone
 ```

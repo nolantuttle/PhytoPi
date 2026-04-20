@@ -27,8 +27,8 @@ RUN wget -qO /tmp/libgpiod.tar.xz \
     && rm -rf /tmp/libgpiod*
 
 WORKDIR /app
-COPY . /app/PhytoPI_Controler
-WORKDIR /app/PhytoPI_Controler
+COPY . /app/controller
+WORKDIR /app/controller
 
 RUN make clean && make
 
@@ -39,6 +39,6 @@ VOLUME ["/data"]
 
 ENV PHYTOPI_DB_PATH=/data/sensor_data.db
 
-WORKDIR /app/PhytoPI_Controler
+WORKDIR /app/controller
 
 CMD ["./bin/phytopi"]

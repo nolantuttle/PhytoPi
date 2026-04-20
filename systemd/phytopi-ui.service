@@ -8,9 +8,9 @@ Type=simple
 User=phytopi
 Environment=DISPLAY=:0
 Environment=XAUTHORITY=/home/phytopi/.Xauthority
-Environment=BUNDLE=/home/phytopi/PhytoPi/User_Interface/build/linux/arm64/release/bundle
-WorkingDirectory=/home/phytopi/PhytoPi/User_Interface/build/linux/arm64/release/bundle
-ExecStart=/home/phytopi/PhytoPi/User_Interface/build/linux/arm64/release/bundle/phytopi_dashboard
+Environment=BUNDLE=/home/phytopi/PhytoPi/user_interface/build/linux/arm64/release/bundle
+WorkingDirectory=/home/phytopi/PhytoPi/user_interface/build/linux/arm64/release/bundle
+ExecStart=/home/phytopi/PhytoPi/user_interface/build/linux/arm64/release/bundle/phytopi_dashboard
 Restart=on-failure
 RestartSec=3
 

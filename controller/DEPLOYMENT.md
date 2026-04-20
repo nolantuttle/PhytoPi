@@ -23,7 +23,7 @@
 ## Build
 
 ```bash
-cd PhytoPI_Controler
+cd controller
 make
 ```
 
@@ -57,9 +57,9 @@ After=network.target
 
 [Service]
 Type=simple
-WorkingDirectory=/home/pi/PhytoPi/PhytoPI_Controler
+WorkingDirectory=/home/pi/PhytoPi/controller
 EnvironmentFile=/home/pi/PhytoPi/.env
-ExecStart=/home/pi/PhytoPi/PhytoPI_Controler/phytopi_controller
+ExecStart=/home/pi/PhytoPi/controller/phytopi_controller
 Restart=always
 RestartSec=10
 
@@ -80,7 +80,7 @@ sudo systemctl status phytopi-controller
 The AI worker runs on a separate machine (e.g. home PC) and processes `ai_capture_jobs`:
 
 ```bash
-cd PhytoPI_Controler/scripts
+cd controller/scripts
 pip install supabase
 # Optional: pip install torch transformers  # for Moondream + Qwen2.5
 export SUPABASE_URL=...

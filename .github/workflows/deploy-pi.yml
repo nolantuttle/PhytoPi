@@ -7,8 +7,8 @@ on:
       - release/v*
     paths:
       # Trigger only when Pi-relevant code changes
-      - 'User_Interface/**'
-      - 'PhytoPI_Controler/**'
+      - 'user_interface/**'
+      - 'controller/**'
       - 'docker-compose.rpi.yml'
       - 'docker/**'
       - 'scripts/**'

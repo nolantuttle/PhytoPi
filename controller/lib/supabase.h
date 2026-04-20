@@ -65,5 +65,19 @@ int supabase_heartbeat(supabase_config_t *config);
 /* Update schedule last_run_at. Returns 0 on success. */
 int supabase_update_schedule_last_run(supabase_config_t *config, const char *schedule_id);
 
+/*
+ * Upsert device_actuator_state so the dashboard can display live actuator and
+ * sensor health without querying device_commands history.
+ *   lights_on / pump_on : 0 or 1
+ *   fan_duty            : 0–100
+ *   bme_ok / soil_ok    : 1 = sensor healthy, 0 = sensor failing
+ * Pass -1 for any field that has not changed to omit it from the PATCH body
+ * (except device_id which is always required).
+ * Returns 0 on success, -1 on failure.
+ */
+int supabase_update_actuator_state(supabase_config_t *config,
+                                   int lights_on, int pump_on, int fan_duty,
+                                   int bme_ok, int soil_ok);
+
 #endif
 

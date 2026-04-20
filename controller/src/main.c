@@ -21,8 +21,7 @@
 // Deadband Thresholds
 #define THRESH_TEMP 1                 // 1 degree C
 #define THRESH_HUM 2                  // 2 percent
-#define THRESH_SOIL 5                 // 5 raw units (approx 2%)
-#define THRESH_WATER 5                // 5 raw units
+#define THRESH_SOIL 2                 // 2 percent points (soil stored as 0–100%)
 #define THRESH_LIGHT 10               // 10 raw units
 #define THRESH_PRESSURE 2             // 2 hPa
 #define THRESH_GAS 5                  // 5 kOhm
@@ -52,7 +51,6 @@
 static char *humidity_sensor_id = NULL;
 static char *temperature_sensor_id = NULL;
 static char *soil_moisture_sensor_id = NULL;
-static char *water_level_sensor_id = NULL;
 static char *pressure_sensor_id = NULL;
 static char *gas_sensor_id = NULL;
 static char *water_level_photoelectric_sensor_id = NULL;
@@ -61,6 +59,19 @@ static char *water_level_photoelectric_sensor_id = NULL;
  * Map photoelectric frequency (Hz) to 5-state water level (0-4) with hysteresis.
  * 0=Empty, 1=Low, 2=Mid, 3=High, 4=Full
  */
+/* Map soil ADC (0..adc_max) to 0–100 percent. adc_max from SOIL_ADC_MAX env, default 150. */
+static int soil_raw_to_percent(int raw, int adc_max)
+{
+    if (raw < 0 || adc_max < 1)
+        return -1;
+    double p = 100.0 * (double)raw / (double)adc_max;
+    if (p < 0.0)
+        p = 0.0;
+    if (p > 100.0)
+        p = 100.0;
+    return (int)(p + 0.5);
+}
+
 static int frequency_to_water_state(int hz, int last_state)
 {
     if (hz < 0)
@@ -162,18 +173,6 @@ void sync_to_supabase(sqlite3 *db, supabase_config_t *supabase_cfg)
                 supabase_readings[supabase_count].sensor_id = soil_moisture_sensor_id;
                 supabase_readings[supabase_count].value = readings[i].value1;
                 supabase_readings[supabase_count].unit = "percent";
-                supabase_readings[supabase_count].timestamp = readings[i].timestamp;
-                supabase_readings[supabase_count].metadata = NULL;
-                supabase_count++;
-            }
-        }
-        else if (strcmp(readings[i].table_name, "water_level_data") == 0)
-        {
-            if (water_level_sensor_id && supabase_count < max_supabase_count)
-            {
-                supabase_readings[supabase_count].sensor_id = water_level_sensor_id;
-                supabase_readings[supabase_count].value = readings[i].value1;
-                supabase_readings[supabase_count].unit = "raw";
                 supabase_readings[supabase_count].timestamp = readings[i].timestamp;
                 supabase_readings[supabase_count].metadata = NULL;
                 supabase_count++;
@@ -337,7 +336,6 @@ int main()
     humidity_sensor_id = getenv("SUPABASE_HUMIDITY_SENSOR_ID");
     temperature_sensor_id = getenv("SUPABASE_TEMPERATURE_SENSOR_ID");
     soil_moisture_sensor_id = getenv("SUPABASE_SOIL_MOISTURE_SENSOR_ID");
-    water_level_sensor_id = getenv("SUPABASE_WATER_LEVEL_SENSOR_ID");
     pressure_sensor_id = getenv("SUPABASE_PRESSURE_SENSOR_ID");
     gas_sensor_id = getenv("SUPABASE_GAS_SENSOR_ID");
     water_level_photoelectric_sensor_id = getenv("SUPABASE_WATER_LEVEL_PHOTOELECTRIC_SENSOR_ID");
@@ -360,13 +358,21 @@ int main()
     const char *sql_soil_moisture = "INSERT INTO soil_moisture_data (humidity, timestamp) VALUES (?, ?);";
     const char *sql_water_photo = "INSERT INTO water_level_photoelectric (frequency_hz, timestamp) VALUES (?, ?);";
 
+    int soil_adc_max = 150;
+    const char *soil_max_env = getenv("SOIL_ADC_MAX");
+    if (soil_max_env && soil_max_env[0])
+    {
+        int v = atoi(soil_max_env);
+        if (v >= 1 && v <= 255)
+            soil_adc_max = v;
+    }
+
     /* Loop timing */
     time_t last_sync = time(NULL);
     time_t last_command_poll = time(NULL);
     time_t last_threshold_fetch = 0;
     time_t last_schedule_fetch = 0;
     time_t last_bme_read = 0;
-    int iteration = 0;
 
     /* Actuator state */
     time_t lights_off_at = 0;
@@ -380,9 +386,10 @@ int main()
     float last_bme_pressure = -999, last_bme_gas = -999;
     time_t last_bme_ts = 0;
 
-    /* Soil moisture deadband state */
-    int soil_moisture = 0;
-    int last_soil_moisture = -999;
+    /* Soil moisture: raw ADC and stored/synced percent (0–100) */
+    int soil_raw = -1;
+    int soil_moisture_pct = -1;
+    int last_soil_moisture_pct = -999;
     time_t last_soil_ts = 0;
 
     /* Photoelectric water level deadband state */
@@ -395,6 +402,9 @@ int main()
     int photoelectric_fail_count = 0;
     time_t last_bme_alert = 0;
     time_t last_photo_alert = 0;
+    int last_reported_bme_ok = -1;   /* -1 = not yet reported */
+    int last_reported_soil_ok = -1;
+    int initial_state_pushed = 0;
 
     /* Threshold cache */
     device_threshold_t *cached_thresholds = NULL;
@@ -404,10 +414,13 @@ int main()
     time_t last_thr_alert_pressure = 0;
     time_t last_thr_alert_gas = 0;
     time_t last_thr_alert_water = 0;
+    time_t last_thr_alert_soil = 0;
+    time_t last_thr_alert_fan = 0;
 
     while (1)
     {
-        soil_moisture = (fd >= 0) ? read_pcf8591_channel(fd, 0) : -1; /* pcf8591 Ch0 */
+        soil_raw = (fd >= 0) ? read_pcf8591_channel(fd, 0) : -1; /* pcf8591 A0 */
+        soil_moisture_pct = (soil_raw >= 0) ? soil_raw_to_percent(soil_raw, soil_adc_max) : -1;
 
         time_t now = time(NULL);
 
@@ -419,6 +432,8 @@ int main()
             dev_state.lights_on = 0;
             lights_off_at = 0;
             state_save(STATE_PATH, &dev_state);
+            if (supabase_enabled)
+                supabase_update_actuator_state(&supabase_cfg, 0, -1, -1, -1, -1);
         }
         if (pump_off_at && now >= pump_off_at)
         {
@@ -427,6 +442,8 @@ int main()
             dev_state.pump_on = 0;
             pump_off_at = 0;
             state_save(STATE_PATH, &dev_state);
+            if (supabase_enabled)
+                supabase_update_actuator_state(&supabase_cfg, -1, 0, -1, -1, -1);
         }
         if (ventilation_off_at && now >= ventilation_off_at)
         {
@@ -434,6 +451,8 @@ int main()
             dev_state.fan_duty = 0;
             ventilation_off_at = 0;
             state_save(STATE_PATH, &dev_state);
+            if (supabase_enabled)
+                supabase_update_actuator_state(&supabase_cfg, -1, -1, 0, -1, -1);
         }
 
         // BME680 read (every 3s for stability)
@@ -452,39 +471,51 @@ int main()
             else
             {
                 bme680_fail_count++;
-                if (iteration % 10 == 0)
+                if (bme680_fail_count % 10 == 0)
                     fprintf(stderr, "Warning: BME680 read failed (consecutive: %d)\n", bme680_fail_count);
+                /* Invalidate stale readings after 5 consecutive failures so threshold
+                 * evaluation skips them rather than using an outdated cached value. */
+                if (bme680_fail_count >= 5)
+                {
+                    bme_temp = -999;
+                    bme_hum = -999;
+                    bme_pressure = -999;
+                    bme_gas = -999;
+                }
                 if (bme680_fail_count >= SENSOR_FAIL_ALERT_AFTER && supabase_enabled && supabase_cfg.device_id &&
                     (now - last_bme_alert) >= SENSOR_ALERT_COOLDOWN)
                 {
                     if (supabase_insert_alert(&supabase_cfg, supabase_cfg.device_id,
-                                              "sensor_failure", "BME680 sensor unreachable after repeated failures",
+                                              "sensor_failure_bme680", "BME680 sensor unreachable after repeated failures",
                                               "high", "automated") == 0)
                         last_bme_alert = now;
                 }
             }
         }
 
-        // Photoelectric water level (every 2nd iteration to avoid blocking)
-        int photo_freq = -1;
-        if (iteration % 2 == 0)
+        /* Photoelectric water level — read every 2s on its own timer */
+        int photo_freq = last_photo_freq > 0 ? last_photo_freq : -1;
+        if (now - last_photo_ts >= 2)
         {
             if (read_photoelectric_water_level(&photo_freq) != 0 || photo_freq < 0)
+            {
                 photoelectric_fail_count++;
+                if (photoelectric_fail_count >= SENSOR_FAIL_ALERT_AFTER && supabase_enabled &&
+                    supabase_cfg.device_id && (now - last_photo_alert) >= SENSOR_ALERT_COOLDOWN)
+                {
+                    if (supabase_insert_alert(&supabase_cfg, supabase_cfg.device_id,
+                                                "sensor_failure_photoelectric", "Photoelectric water level sensor unreachable",
+                                                "high", "automated") == 0)
+                        last_photo_alert = now;
+                }
+            }
             else
                 photoelectric_fail_count = 0;
         }
-        if (photoelectric_fail_count >= SENSOR_FAIL_ALERT_AFTER && supabase_enabled && supabase_cfg.device_id &&
-            (now - last_photo_alert) >= SENSOR_ALERT_COOLDOWN)
-        {
-            if (supabase_insert_alert(&supabase_cfg, supabase_cfg.device_id,
-                                      "sensor_failure", "Photoelectric water level sensor unreachable",
-                                      "high", "automated") == 0)
-                last_photo_alert = now;
-        }
 
-        printf("[%ld] L=%d Pump=%d T=%.1fC H=%.1f%% Press=%.1f hPa G=%.1f Soil=%d Photo=%dHz\n",
-               now, lights_on, pump_on, bme_temp, bme_hum, bme_pressure, bme_gas, soil_moisture, photo_freq);
+        printf("[%ld] L=%d Pump=%d T=%.1fC H=%.1f%% Press=%.1f hPa G=%.1f Soil=%d%% (raw=%d) Photo=%dHz\n",
+               now, lights_on, pump_on, bme_temp, bme_hum, bme_pressure, bme_gas,
+               soil_moisture_pct >= 0 ? soil_moisture_pct : -1, soil_raw, photo_freq);
 
         int timestamp = (int)now;
 
@@ -511,37 +542,22 @@ int main()
             }
         }
 
-        // 2. Check Soil Moisture
-        if (soil_moisture != -1)
+        // 2. Check Soil Moisture (stored as percent 0–100)
+        if (soil_moisture_pct >= 0)
         {
-            if (abs(soil_moisture - last_soil_moisture) >= THRESH_SOIL ||
+            if (abs(soil_moisture_pct - last_soil_moisture_pct) >= THRESH_SOIL ||
                 (now - last_soil_ts) >= HEARTBEAT_INTERVAL)
             {
-                if (sql_execute_insert(db, sql_soil_moisture, soil_moisture, 0, timestamp) == SQLITE_OK)
+                if (sql_execute_insert(db, sql_soil_moisture, soil_moisture_pct, 0, timestamp) == SQLITE_OK)
                 {
-                    printf("  -> Saved Soil (Val: %d->%d)\n", last_soil_moisture, soil_moisture);
-                    last_soil_moisture = soil_moisture;
+                    printf("  -> Saved Soil (%%: %d->%d, raw=%d)\n", last_soil_moisture_pct, soil_moisture_pct, soil_raw);
+                    last_soil_moisture_pct = soil_moisture_pct;
                     last_soil_ts = now;
                 }
             }
         }
 
-        // 3. Check Water Level
-        if (water_level != -1)
-        {
-            if (abs(water_level - last_water_level) >= THRESH_WATER ||
-                (now - last_water_ts) >= HEARTBEAT_INTERVAL)
-            {
-                if (sql_execute_insert(db, sql_water_level, water_level, 0, timestamp) == SQLITE_OK)
-                {
-                    printf("  -> Saved Water (Val: %d->%d)\n", last_water_level, water_level);
-                    last_water_level = water_level;
-                    last_water_ts = now;
-                }
-            }
-        }
-
-        // 4. Photoelectric water level (5-state with hysteresis)
+        // 3. Photoelectric water level (5-state with hysteresis)
         if (photo_freq >= 0)
         {
             int water_state = frequency_to_water_state(photo_freq, last_water_state);
@@ -569,6 +585,26 @@ int main()
                 /* Heartbeat for offline detection */
                 if (supabase_cfg.device_id)
                     supabase_heartbeat(&supabase_cfg);
+                /* Push full actuator + sensor health state on first sync and on sensor transitions */
+                if (supabase_cfg.device_id)
+                {
+                    int cur_bme_ok  = (bme680_fail_count < SENSOR_FAIL_ALERT_AFTER) ? 1 : 0;
+                    int cur_soil_ok = (soil_moisture_pct >= 0) ? 1 : 0;
+                    int need_push   = !initial_state_pushed
+                                      || cur_bme_ok  != last_reported_bme_ok
+                                      || cur_soil_ok != last_reported_soil_ok;
+                    if (need_push)
+                    {
+                        if (supabase_update_actuator_state(&supabase_cfg,
+                                lights_on, pump_on, dev_state.fan_duty,
+                                cur_bme_ok, cur_soil_ok) == 0)
+                        {
+                            initial_state_pushed = 1;
+                            last_reported_bme_ok  = cur_bme_ok;
+                            last_reported_soil_ok = cur_soil_ok;
+                        }
+                    }
+                }
             }
 
             // Poll for pending commands
@@ -604,6 +640,7 @@ int main()
                             printf("  -> Lights %s (duration=%ds, auto-off=%s)\n",
                                    desired ? "ON" : "OFF", duration_sec,
                                    lights_off_at ? "yes" : "no");
+                            supabase_update_actuator_state(&supabase_cfg, desired, -1, -1, -1, -1);
                         }
                     }
                     else if (strcmp(cmd.command_type, "toggle_pump") == 0)
@@ -638,6 +675,7 @@ int main()
                             printf("  -> Pump %s (duration=%ds, auto-off=%s)\n",
                                    desired ? "ON" : "OFF", duration_sec,
                                    pump_off_at ? "yes" : "no");
+                            supabase_update_actuator_state(&supabase_cfg, -1, desired, -1, -1, -1);
                         }
                     }
                     else if (strcmp(cmd.command_type, "toggle_fans") == 0)
@@ -659,6 +697,7 @@ int main()
                             dev_state.fan_duty = duty;
                             state_save(STATE_PATH, &dev_state);
                             ok = 1;
+                            supabase_update_actuator_state(&supabase_cfg, -1, -1, duty, -1, -1);
                         }
                     }
                     else if (strcmp(cmd.command_type, "run_ventilation") == 0)
@@ -755,7 +794,7 @@ int main()
                 }
             }
 
-            /* Evaluate cached thresholds on every iteration so spikes are never missed */
+            /* Evaluate cached thresholds so spikes are never missed */
             for (int t = 0; t < cached_thr_count; t++)
             {
                 if (!cached_thresholds[t].enabled)
@@ -784,11 +823,23 @@ int main()
                     val = bme_gas;
                     cooldown_ptr = &last_thr_alert_gas;
                 }
+                else if (strcmp(metric, "soil_moisture") == 0)
+                {
+                    if (soil_moisture_pct < 0)
+                        continue;
+                    val = (double)soil_moisture_pct;
+                    cooldown_ptr = &last_thr_alert_soil;
+                }
                 else if (strcmp(metric, "water_level_low") == 0)
                 {
                     val = (double)photo_freq;
                     cooldown_ptr = &last_thr_alert_water;
                     cooldown_seconds = WATER_ALERT_COOLDOWN;
+                }
+                else if (strcmp(metric, "fan_duty") == 0)
+                {
+                    val = (double)dev_state.fan_duty;
+                    cooldown_ptr = &last_thr_alert_fan;
                 }
                 if (val < -900 && strcmp(metric, "water_level_low") != 0)
                     continue;
@@ -820,7 +871,11 @@ int main()
                     else
                         snprintf(msg, sizeof(msg), "%s %.1f outside range [%.1f, %.1f]",
                                  metric, val, cached_thresholds[t].min_value, cached_thresholds[t].max_value);
-                    const char *alert_type = (strcmp(metric, "water_level_low") == 0) ? "water_level_low" : "threshold";
+                    char alert_type_buf[64];
+                    const char *alert_type =
+                        (strcmp(metric, "water_level_low") == 0)
+                            ? "water_level_low"
+                            : (snprintf(alert_type_buf, sizeof(alert_type_buf), "threshold_%s", metric), alert_type_buf);
                     const char *severity = (strcmp(metric, "water_level_low") == 0) ? "high" : "medium";
                     printf("  [Thresholds] EXCEEDED: %s\n", msg);
                     if (supabase_insert_alert(&supabase_cfg, supabase_cfg.device_id,
@@ -891,8 +946,15 @@ int main()
                         }
                         if (should_run)
                         {
+                            static struct
+                            {
+                                char id[SCHEDULE_ID_LEN];
+                                time_t last_alert_at;
+                            } sched_alert_cd[32];
+                            static int sched_alert_cd_n = 0;
+
                             json_object *pl = json_tokener_parse(sched[s].payload_json);
-                            int state = 1, duration = 30, duty = 80;
+                            int state = 1, duration = 0, duty = 80;
                             if (pl)
                             {
                                 json_object *st = NULL, *du = NULL, *dt = NULL;
@@ -904,32 +966,110 @@ int main()
                                     duty = json_object_get_int(dt);
                                 json_object_put(pl);
                             }
-                            if (strcmp(sched[s].schedule_type, "lights") == 0 && lights_init() == 0)
+                            int sched_applied = 0;
+                            const char *alert_type = "schedule";
+                            char alert_msg[192];
+
+                            if (strcmp(sched[s].schedule_type, "lights") == 0)
                             {
-                                lights_set(state);
-                                dev_state.lights_on = state;
-                                state_save(STATE_PATH, &dev_state);
-                                lights_on = state;
-                                lights_off_at = (state && duration > 0) ? (now + duration) : 0;
-                                if (lights_off_at)
-                                    printf("  -> Lights ON (auto-off in %ds)\n", duration);
+                                if (lights_init() == 0 && lights_set(state) == 0)
+                                {
+                                    dev_state.lights_on = state;
+                                    lights_on = state;
+                                    lights_off_at = (state && duration > 0) ? (now + duration) : 0;
+                                    if (lights_off_at)
+                                        printf("  -> Lights ON (auto-off in %ds) [schedule]\n", duration);
+                                    else
+                                        printf("  -> Lights %s [schedule]\n", state ? "ON" : "OFF");
+                                    alert_type = "schedule_lights";
+                                    if (state)
+                                    {
+                                        if (lights_off_at)
+                                            snprintf(alert_msg, sizeof(alert_msg),
+                                                     "Scheduled: Grow lights ON (auto-off in %d s)", duration);
+                                        else
+                                            snprintf(alert_msg, sizeof(alert_msg),
+                                                     "Scheduled: Grow lights ON");
+                                    }
+                                    else
+                                        snprintf(alert_msg, sizeof(alert_msg),
+                                                 "Scheduled: Grow lights OFF");
+                                    sched_applied = 1;
+                                }
+                                else
+                                    fprintf(stderr, "  [Schedule] lights: init or GPIO failed\n");
                             }
-                            else if (strcmp(sched[s].schedule_type, "pump") == 0 && pump_init() == 0)
+                            else if (strcmp(sched[s].schedule_type, "pump") == 0)
                             {
-                                pump_set(state);
-                                dev_state.pump_on = state;
-                                state_save(STATE_PATH, &dev_state);
-                                pump_on = state;
-                                pump_off_at = (state && duration > 0) ? (now + duration) : 0;
+                                if (pump_init() == 0 && pump_set(state) == 0)
+                                {
+                                    dev_state.pump_on = state;
+                                    pump_on = state;
+                                    pump_off_at = (state && duration > 0) ? (now + duration) : 0;
+                                    printf("  -> Pump %s [schedule]\n", state ? "ON" : "OFF");
+                                    alert_type = "schedule_pump";
+                                    snprintf(alert_msg, sizeof(alert_msg), "Scheduled: Pump turned %s",
+                                             state ? "ON" : "OFF");
+                                    sched_applied = 1;
+                                }
+                                else
+                                    fprintf(stderr, "  [Schedule] pump: init or GPIO failed\n");
                             }
-                            else if (strcmp(sched[s].schedule_type, "ventilation") == 0 && fans_init() == 0)
+                            else if (strcmp(sched[s].schedule_type, "ventilation") == 0)
                             {
-                                fans_set_both(state ? (duty > 0 ? duty : FAN_MIN_DUTY_WHEN_ON) : 0);
-                                dev_state.fan_duty = state ? (duty > 0 ? duty : FAN_MIN_DUTY_WHEN_ON) : 0;
-                                state_save(STATE_PATH, &dev_state);
-                                ventilation_off_at = (state && duration > 0) ? (now + duration) : 0;
+                                int fan_duty_target = state ? (duty > 0 ? duty : FAN_MIN_DUTY_WHEN_ON) : 0;
+                                if (fans_init() == 0 && fans_set_both(fan_duty_target) == 0)
+                                {
+                                    dev_state.fan_duty = fan_duty_target;
+                                    ventilation_off_at = (state && duration > 0) ? (now + duration) : 0;
+                                    printf("  -> Ventilation %s [schedule] (duty=%d%%)\n",
+                                           state ? "ON" : "OFF", fan_duty_target);
+                                    alert_type = "schedule_ventilation";
+                                    if (state)
+                                        snprintf(alert_msg, sizeof(alert_msg),
+                                                 "Scheduled: Ventilation ON at %d%%",
+                                                 fan_duty_target);
+                                    else
+                                        snprintf(alert_msg, sizeof(alert_msg),
+                                                 "Scheduled: Ventilation OFF");
+                                    sched_applied = 1;
+                                }
+                                else
+                                    fprintf(stderr, "  [Schedule] ventilation: init or fans_set failed\n");
                             }
+
+                            if (sched_applied)
                             {
+                                state_save(STATE_PATH, &dev_state);
+                                if (supabase_update_actuator_state(&supabase_cfg,
+                                        dev_state.lights_on, dev_state.pump_on, dev_state.fan_duty,
+                                        -1, -1) != 0)
+                                    fprintf(stderr, "  [Schedule] actuator state upsert failed\n");
+
+                                /* At most one alert per schedule id per cooldown window */
+                                enum { SCHED_ALERT_COOLDOWN_SEC = 120 };
+                                time_t *last_alert_at = NULL;
+                                for (int a = 0; a < sched_alert_cd_n; a++)
+                                    if (strcmp(sched_alert_cd[a].id, sched[s].id) == 0)
+                                    {
+                                        last_alert_at = &sched_alert_cd[a].last_alert_at;
+                                        break;
+                                    }
+                                if (!last_alert_at && sched_alert_cd_n < 32)
+                                {
+                                    int i = sched_alert_cd_n++;
+                                    snprintf(sched_alert_cd[i].id, sizeof(sched_alert_cd[i].id), "%s",
+                                             sched[s].id);
+                                    last_alert_at = &sched_alert_cd[i].last_alert_at;
+                                    *last_alert_at = 0;
+                                }
+                                if (last_alert_at && (now - *last_alert_at) >= SCHED_ALERT_COOLDOWN_SEC)
+                                {
+                                    if (supabase_insert_alert(&supabase_cfg, supabase_cfg.device_id,
+                                            alert_type, alert_msg, "low", "scheduled") == 0)
+                                        *last_alert_at = now;
+                                }
+
                                 int found = 0;
                                 for (int r = 0; r < run_cache_n; r++)
                                     if (strcmp(run_cache[r].id, sched[s].id) == 0)
@@ -940,7 +1080,8 @@ int main()
                                     }
                                 if (!found && run_cache_n < 16)
                                 {
-                                    snprintf(run_cache[run_cache_n].id, sizeof(run_cache[run_cache_n].id), "%s", sched[s].id);
+                                    snprintf(run_cache[run_cache_n].id, sizeof(run_cache[run_cache_n].id), "%s",
+                                             sched[s].id);
                                     run_cache[run_cache_n].last_run = now;
                                     run_cache_n++;
                                 }
@@ -954,7 +1095,6 @@ int main()
         }
 
         sleep(DATA_READ_INTERVAL);
-        iteration++;
     }
 
     if (cached_thresholds)

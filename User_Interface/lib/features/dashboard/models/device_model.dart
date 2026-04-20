@@ -25,6 +25,21 @@ class Device {
     return DateTime.now().toUtc().difference(activity.toUtc()) < offlineTimeout;
   }
 
+  Device copyWith({
+    String? name,
+    DateTime? lastSeen,
+    DateTime? lastReadingAt,
+    bool? isOnlineOverride,
+  }) {
+    return Device(
+      id: id,
+      name: name ?? this.name,
+      lastSeen: lastSeen ?? this.lastSeen,
+      lastReadingAt: lastReadingAt ?? this.lastReadingAt,
+      isOnlineOverride: isOnlineOverride ?? _isOnlineOverride,
+    );
+  }
+
   factory Device.fromJson(Map<String, dynamic> json) {
     final lastReadingAt = json['last_reading_at'] != null
         ? DateTime.parse(json['last_reading_at'])

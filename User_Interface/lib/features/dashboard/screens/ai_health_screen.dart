@@ -15,7 +15,11 @@ import '../widgets/mjpeg_view.dart';
 // ---------------------------------------------------------------------------
 class _LiveStreamSection extends StatefulWidget {
   final bool visible;
-  const _LiveStreamSection({this.visible = true});
+  final double streamHeight;
+  const _LiveStreamSection({
+    this.visible = true,
+    this.streamHeight = 260,
+  });
 
   @override
   State<_LiveStreamSection> createState() => _LiveStreamSectionState();
@@ -54,64 +58,61 @@ class _LiveStreamSectionState extends State<_LiveStreamSection> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text('Live View', style: theme.textTheme.titleLarge),
-        const SizedBox(height: 8),
-        Container(
-          height: 260,
-          decoration: BoxDecoration(
-            color: Colors.black,
-            borderRadius: BorderRadius.circular(12),
-          ),
-          clipBehavior: Clip.antiAlias,
-          child: !widget.visible
-              ? const Center(
-                  child: Icon(Icons.videocam,
-                      size: 48, color: Colors.white24),
-                )
-              : Stack(
-                  fit: StackFit.expand,
-                  children: [
-                    if (_loading)
-                      const Center(
-                          child: CircularProgressIndicator(color: Colors.white))
-                    else
-                      MjpegView(url: _streamUrl, fit: BoxFit.contain),
-                    if (_disconnected)
-                      Container(
-                        color: Colors.black54,
-                        child: Center(
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              const Icon(Icons.videocam_off,
-                                  size: 48, color: Colors.white70),
-                              const SizedBox(height: 8),
-                              const Text('Stream disconnected',
-                                  style: TextStyle(color: Colors.white70)),
-                              const SizedBox(height: 16),
-                              FilledButton.icon(
-                                onPressed: _start,
-                                icon: const Icon(Icons.refresh),
-                                label: const Text('Retry'),
-                              ),
-                            ],
+        Row(
+          children: [
+            Text('Live View', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600)),
+            const Spacer(),
+            TextButton.icon(
+              onPressed: _start,
+              icon: const Icon(Icons.refresh, size: 16),
+              label: const Text('Reconnect', style: TextStyle(fontSize: 12)),
+              style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 8)),
+            ),
+          ],
+        ),
+        const SizedBox(height: 6),
+        AspectRatio(
+          aspectRatio: 4 / 3,
+          child: Container(
+            decoration: BoxDecoration(
+              color: Colors.black,
+              borderRadius: BorderRadius.circular(16),
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: !widget.visible
+                ? const Center(
+                    child: Icon(Icons.videocam, size: 48, color: Colors.white24),
+                  )
+                : Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      if (_loading)
+                        const Center(child: CircularProgressIndicator(color: Colors.white))
+                      else
+                        MjpegView(url: _streamUrl, fit: BoxFit.contain),
+                      if (_disconnected)
+                        Container(
+                          color: Colors.black54,
+                          child: Center(
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(Icons.videocam_off, size: 48, color: Colors.white70),
+                                const SizedBox(height: 8),
+                                const Text('Stream disconnected', style: TextStyle(color: Colors.white70)),
+                                const SizedBox(height: 16),
+                                FilledButton.icon(
+                                  onPressed: _start,
+                                  icon: const Icon(Icons.refresh),
+                                  label: const Text('Retry'),
+                                ),
+                              ],
+                            ),
                           ),
                         ),
-                      ),
-                    Positioned(
-                      bottom: 8,
-                      right: 8,
-                      child: TextButton.icon(
-                        onPressed: _start,
-                        icon: const Icon(Icons.refresh,
-                            size: 18, color: Colors.white70),
-                        label: const Text('Retry',
-                            style:
-                                TextStyle(color: Colors.white70, fontSize: 12)),
-                      ),
-                    ),
-                  ],
-                ),
+                    ],
+                  ),
+          ),
         ),
       ],
     );
@@ -128,7 +129,9 @@ class AiHealthScreen extends StatefulWidget {
   State<AiHealthScreen> createState() => _AiHealthScreenState();
 }
 
-class _AiHealthScreenState extends State<AiHealthScreen> {
+class _AiHealthScreenState extends State<AiHealthScreen>
+    with SingleTickerProviderStateMixin {
+  late final TabController _tabController;
   Map<String, dynamic>? _latestCompletedJob;
   Map<String, dynamic>? _inProgressJob;
   Map<String, dynamic>? _latestInference;
@@ -144,6 +147,7 @@ class _AiHealthScreenState extends State<AiHealthScreen> {
   @override
   void initState() {
     super.initState();
+    _tabController = TabController(length: 2, vsync: this);
     _load();
     _refreshTimer = Timer.periodic(const Duration(seconds: 15), (_) {
       if (!mounted) return;
@@ -165,6 +169,7 @@ class _AiHealthScreenState extends State<AiHealthScreen> {
 
   @override
   void dispose() {
+    _tabController.dispose();
     _refreshTimer?.cancel();
     super.dispose();
   }
@@ -600,217 +605,255 @@ class _AiHealthScreenState extends State<AiHealthScreen> {
                 _asMap(resultMap?['vision'])?['plant_state']);
     final isHealthy = healthStatus != 'needs_attention';
 
-    return RefreshIndicator(
-      onRefresh: _load,
-      child: SingleChildScrollView(
-        physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            // Header
-            Text('AI Plant Health',
-                style: theme.textTheme.headlineSmall),
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              alignment: WrapAlignment.end,
-              children: [
-                OutlinedButton.icon(
-                  onPressed: () => _showHistorySheet(),
-                  icon: const Icon(Icons.history),
-                  label: const Text('View History'),
+    final size = MediaQuery.sizeOf(context);
+    final wide = size.width >= 900;
+
+    // Shared action bar (capture + history)
+    final actionButtons = Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        OutlinedButton.icon(
+          onPressed: () => _showHistorySheet(),
+          icon: const Icon(Icons.history, size: 18),
+          label: const Text('History'),
+        ),
+        const SizedBox(width: 8),
+        FilledButton.icon(
+          onPressed: _triggerCapture,
+          icon: const Icon(Icons.camera_alt, size: 18),
+          label: const Text('Capture Now'),
+        ),
+      ],
+    );
+
+    // Live stream section (always uses AspectRatio internally now)
+    final live = _LiveStreamSection(
+      visible: !_historySheetVisible,
+      streamHeight: 260, // unused — stream uses AspectRatio internally
+    );
+
+    // Analysis content list (shared between wide right column and narrow tab)
+    List<Widget> analysisContent() => [
+          if (analysis != null) ...[
+            _HealthStatusBanner(isHealthy: isHealthy, theme: theme),
+            const SizedBox(height: 16),
+          ],
+
+          if (inProgressStatus != null)
+            Card(
+              margin: const EdgeInsets.only(bottom: 12),
+              child: Padding(
+                padding: const EdgeInsets.all(14),
+                child: Row(
+                  children: [
+                    const SizedBox(width: 22, height: 22,
+                        child: CircularProgressIndicator(strokeWidth: 2)),
+                    const SizedBox(width: 14),
+                    Text('Capture in progress ($inProgressStatus)…'),
+                  ],
                 ),
-                FilledButton.icon(
-                  onPressed: _triggerCapture,
-                  icon: const Icon(Icons.camera_alt),
-                  label: const Text('Capture Now'),
-                ),
-              ],
+              ),
             ),
-            const SizedBox(height: 24),
 
-            // ── LIVE STREAM — hidden while the history sheet is open so the
-            // platform view (HtmlElementView on web) doesn't render above it.
-            _LiveStreamSection(visible: !_historySheetVisible),
-            const SizedBox(height: 24),
+          if (imageUrl != null) ...[
+            FutureBuilder<String>(
+              future: _getImageUrlCached(imageUrl),
+              builder: (context, snap) {
+                if (snap.hasData && snap.data!.isNotEmpty) {
+                  return ClipRRect(
+                    borderRadius: BorderRadius.circular(12),
+                    child: Image.network(
+                      snap.data!,
+                      width: double.infinity,
+                      fit: BoxFit.contain,
+                      errorBuilder: (_, __, ___) => _placeholderImage(theme),
+                    ),
+                  );
+                }
+                return _placeholderImage(theme);
+              },
+            ),
+            const SizedBox(height: 16),
+          ] else if (inProgressStatus == null)
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  children: [
+                    Icon(Icons.photo_camera, size: 48, color: theme.disabledColor),
+                    const SizedBox(height: 12),
+                    Text('No captures yet', style: theme.textTheme.titleMedium),
+                    const SizedBox(height: 8),
+                    const Text('Tap "Capture Now" to take a photo for AI analysis.'),
+                  ],
+                ),
+              ),
+            ),
 
-            // Health status banner
-            if (analysis != null) ...[
-              _HealthStatusBanner(
-                  isHealthy: isHealthy, theme: theme),
-              const SizedBox(height: 24),
-            ],
-
-            // AI Capture
-            Text('AI Capture',
-                style: theme.textTheme.titleLarge),
+          if (analysis != null) ...[
             const SizedBox(height: 8),
+            Text('Plant Analysis', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600)),
+            const SizedBox(height: 8),
+            _AnalysisGrid(analysis: analysis, theme: theme),
+            const SizedBox(height: 16),
+          ],
 
-            if (inProgressStatus != null)
-              Card(
-                margin: const EdgeInsets.only(bottom: 12),
-                child: Padding(
-                  padding: const EdgeInsets.all(14),
-                  child: Row(
-                    children: [
-                      const SizedBox(
-                          width: 22,
-                          height: 22,
-                          child: CircularProgressIndicator(
-                              strokeWidth: 2)),
-                      const SizedBox(width: 14),
-                      Text(
-                          'Capture in progress ($inProgressStatus)…'),
-                    ],
-                  ),
-                ),
-              ),
-
-            if (imageUrl != null) ...[
-              FutureBuilder<String>(
-                future: _getImageUrlCached(imageUrl),
-                builder: (context, snap) {
-                  if (snap.hasData && snap.data!.isNotEmpty) {
-                    return ClipRRect(
-                      borderRadius: BorderRadius.circular(12),
-                      child: Image.network(
-                        snap.data!,
-                        height: 280,
-                        width: double.infinity,
-                        fit: BoxFit.contain,
-                        errorBuilder: (_, __, ___) =>
-                            _placeholderImage(theme),
-                      ),
-                    );
-                  }
-                  return _placeholderImage(theme);
-                },
-              ),
-              const SizedBox(height: 24),
-            ] else if (inProgressStatus == null)
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(24),
-                  child: Column(
-                    children: [
-                      Icon(Icons.photo_camera,
-                          size: 48, color: theme.disabledColor),
-                      const SizedBox(height: 16),
-                      Text('No captures yet',
-                          style: theme.textTheme.titleMedium),
-                      const SizedBox(height: 8),
-                      const Text(
-                          'Tap "Capture Now" to take a photo for AI analysis.'),
-                    ],
-                  ),
-                ),
-              ),
-
-            // Plant analysis grid
-            if (analysis != null) ...[
-              Text('Plant Analysis',
-                  style: theme.textTheme.titleLarge),
-              const SizedBox(height: 8),
-              _AnalysisGrid(
-                  analysis: analysis, theme: theme),
-              const SizedBox(height: 24),
-            ],
-
-            // Environment assessment
-            if (envAssessment != null &&
-                envAssessment.isNotEmpty) ...[
-              Text('Environment Assessment',
-                  style: theme.textTheme.titleLarge),
-              const SizedBox(height: 8),
-              Card(
-                child: ListTile(
-                  leading: Icon(Icons.sensors,
-                      color: theme.colorScheme.primary),
-                  title: Text(envAssessment,
-                      style: theme.textTheme.bodyMedium),
-                  subtitle: (sensorSnapshot != null &&
-                          sensorSnapshot.isNotEmpty)
-                      ? Padding(
-                          padding:
-                              const EdgeInsets.only(top: 8),
-                          child: Text(
-                            sensorSnapshot,
-                            style: theme.textTheme.bodySmall
-                                ?.copyWith(
-                              fontFamily: 'monospace',
-                              color: theme.colorScheme
-                                  .onSurfaceVariant,
-                            ),
+          if (envAssessment != null && envAssessment.isNotEmpty) ...[
+            Text('Environment', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600)),
+            const SizedBox(height: 8),
+            Card(
+              child: ListTile(
+                leading: Icon(Icons.sensors, color: theme.colorScheme.primary),
+                title: Text(envAssessment, style: theme.textTheme.bodyMedium),
+                subtitle: (sensorSnapshot != null && sensorSnapshot.isNotEmpty)
+                    ? Padding(
+                        padding: const EdgeInsets.only(top: 8),
+                        child: Text(
+                          sensorSnapshot,
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            fontFamily: 'monospace',
+                            color: theme.colorScheme.onSurfaceVariant,
                           ),
-                        )
-                      : null,
+                        ),
+                      )
+                    : null,
+              ),
+            ),
+            const SizedBox(height: 16),
+          ],
+
+          if (diagnostic != null && diagnostic.isNotEmpty &&
+              !(diagnostic.startsWith('<') && diagnostic.endsWith('>'))) ...[
+            Text('Diagnostic', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600)),
+            const SizedBox(height: 8),
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Text(diagnostic, style: theme.textTheme.bodyMedium),
+              ),
+            ),
+            const SizedBox(height: 16),
+          ],
+
+          if (tips != null)
+            Builder(builder: (context) {
+              final visibleTips = tips.where((t) {
+                final s = t?.toString() ?? '';
+                return s.isNotEmpty && !(s.startsWith('<') && s.endsWith('>'));
+              }).toList();
+              if (visibleTips.isEmpty) return const SizedBox.shrink();
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text('Care Tips', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600)),
+                  const SizedBox(height: 8),
+                  ...visibleTips.asMap().entries.map((e) => Card(
+                        margin: const EdgeInsets.only(bottom: 8),
+                        child: ListTile(
+                          leading: CircleAvatar(
+                            radius: 14,
+                            backgroundColor: theme.colorScheme.primaryContainer,
+                            child: Text('${e.key + 1}',
+                                style: TextStyle(
+                                    fontSize: 12,
+                                    color: theme.colorScheme.onPrimaryContainer)),
+                          ),
+                          title: Text(e.value is String ? e.value as String : e.value.toString()),
+                        ),
+                      )),
+                ],
+              );
+            }),
+        ];
+
+    if (wide) {
+      // Wide: stream on left (natural 4:3 aspect), scrollable analysis on right
+      return Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Left: stream column, constrained to 45% of width
+          ConstrainedBox(
+            constraints: BoxConstraints(maxWidth: size.width * 0.45),
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text('AI Plant Health',
+                      style: theme.textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 12),
+                  live,
+                  const SizedBox(height: 12),
+                  actionButtons,
+                ],
+              ),
+            ),
+          ),
+          // Divider
+          VerticalDivider(width: 1, thickness: 1, color: theme.dividerColor),
+          // Right: scrollable analysis
+          Expanded(
+            child: RefreshIndicator(
+              onRefresh: _load,
+              child: SingleChildScrollView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: analysisContent(),
                 ),
               ),
-              const SizedBox(height: 24),
-            ],
+            ),
+          ),
+        ],
+      );
+    }
 
-            // Diagnostic
-            if (diagnostic != null &&
-                diagnostic.isNotEmpty &&
-                !(diagnostic.startsWith('<') &&
-                    diagnostic.endsWith('>'))) ...[
-              Text('Diagnostic',
-                  style: theme.textTheme.titleLarge),
-              const SizedBox(height: 8),
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Text(diagnostic,
-                      style: theme.textTheme.bodyMedium),
-                ),
-              ),
-              const SizedBox(height: 24),
+    // Narrow: tab bar with Live | Analysis
+    return Column(
+      children: [
+        Material(
+          color: theme.colorScheme.surface,
+          child: TabBar(
+            controller: _tabController,
+            tabs: const [
+              Tab(icon: Icon(Icons.videocam_outlined), text: 'Live'),
+              Tab(icon: Icon(Icons.analytics_outlined), text: 'Analysis'),
             ],
-
-            // Care tips — filter out any unfilled placeholder items
-            if (tips != null) ...[
-              Builder(builder: (context) {
-                final visibleTips = tips
-                    .where((t) {
-                      final s = t?.toString() ?? '';
-                      return s.isNotEmpty &&
-                          !(s.startsWith('<') && s.endsWith('>'));
-                    })
-                    .toList();
-                if (visibleTips.isEmpty) return const SizedBox.shrink();
-                return Column(
+          ),
+        ),
+        Expanded(
+          child: TabBarView(
+            controller: _tabController,
+            children: [
+              // Tab 0: Live view + capture actions
+              SingleChildScrollView(
+                padding: const EdgeInsets.all(16),
+                child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Text('Care Tips',
-                        style: theme.textTheme.titleLarge),
-                    const SizedBox(height: 8),
-                    ...visibleTips.asMap().entries.map((e) => Card(
-                          margin: const EdgeInsets.only(bottom: 8),
-                          child: ListTile(
-                            leading: CircleAvatar(
-                              radius: 14,
-                              backgroundColor:
-                                  theme.colorScheme.primaryContainer,
-                              child: Text('${e.key + 1}',
-                                  style: TextStyle(
-                                      fontSize: 12,
-                                      color: theme.colorScheme
-                                          .onPrimaryContainer)),
-                            ),
-                            title: Text(e.value is String
-                                ? e.value as String
-                                : e.value.toString()),
-                          ),
-                        )),
+                    live,
+                    const SizedBox(height: 12),
+                    Align(alignment: Alignment.centerRight, child: actionButtons),
                   ],
-                );
-              }),
+                ),
+              ),
+              // Tab 1: Analysis results
+              RefreshIndicator(
+                onRefresh: _load,
+                child: SingleChildScrollView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: analysisContent(),
+                  ),
+                ),
+              ),
             ],
-          ],
+          ),
         ),
-      ),
+      ],
     );
   }
 

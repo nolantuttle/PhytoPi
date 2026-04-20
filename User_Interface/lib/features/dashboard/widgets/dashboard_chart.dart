@@ -47,18 +47,35 @@ class DashboardChart extends StatelessWidget {
       }
     }
 
+    final isDark = theme.brightness == Brightness.dark;
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: theme.cardColor,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(20),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: isDark
+              ? [theme.cardColor, theme.cardColor.withOpacity(0.85)]
+              : [Colors.white, theme.colorScheme.surfaceContainerLow],
+        ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 10,
+            color: (chartColor).withOpacity(0.10),
+            blurRadius: 14,
             offset: const Offset(0, 4),
           ),
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 4,
+            offset: const Offset(0, 1),
+          ),
         ],
+        border: Border.all(
+          color: chartColor.withOpacity(0.15),
+          width: 1,
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -114,15 +131,15 @@ class DashboardChart extends StatelessWidget {
                   bottomTitles: AxisTitles(
                     sideTitles: SideTitles(
                       showTitles: true,
-                      reservedSize: 30,
-                      interval: (maxX - minX) / 3 <= 0 ? 1 : (maxX - minX) / 3,
+                      reservedSize: 36,
+                      interval: (maxX - minX) / 2 <= 0 ? 1 : (maxX - minX) / 2,
                       getTitlesWidget: (value, meta) {
                         final date = DateTime.fromMillisecondsSinceEpoch(value.toInt());
                         return Padding(
                           padding: const EdgeInsets.only(top: 8.0),
                           child: Text(
                             DateFormat('HH:mm').format(date),
-                            style: theme.textTheme.bodySmall,
+                            style: theme.textTheme.bodySmall?.copyWith(fontSize: 10),
                           ),
                         );
                       },

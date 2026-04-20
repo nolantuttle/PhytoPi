@@ -1,6 +1,4 @@
 import 'dart:async';
-import 'dart:math';
-import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
@@ -15,7 +13,6 @@ import 'alerts_screen.dart';
 import 'devices_screen.dart';
 import 'ai_health_screen.dart';
 import '../../settings/screens/profile_screen.dart';
-import '../../support/screens/help_support_screen.dart';
 import '../../settings/screens/settings_screen.dart';
 import '../widgets/dashboard_gauge.dart';
 import '../widgets/dashboard_chart.dart';
@@ -32,6 +29,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Timer? _autoRefreshTimer;
   int _mobileSelectedIndex = 0;
   int _webSelectedIndex = 0;
+  int _kioskSelectedIndex = 0;
   late final ScrollController _mobileScrollController = SmoothScrollController(
     pointerScrollDuration: const Duration(milliseconds: 260),
     pointerScrollCurve: Curves.easeOutCubic,
@@ -103,8 +101,173 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
   }
 
+  static const List<_NavItem> _navItems = [
+    _NavItem(icon: Icons.dashboard_outlined, activeIcon: Icons.dashboard, label: 'Home'),
+    _NavItem(icon: Icons.devices_outlined, activeIcon: Icons.devices, label: 'Devices'),
+    _NavItem(icon: Icons.bar_chart_outlined, activeIcon: Icons.bar_chart, label: 'Charts'),
+    _NavItem(icon: Icons.notifications_outlined, activeIcon: Icons.notifications, label: 'Alerts'),
+    _NavItem(icon: Icons.health_and_safety_outlined, activeIcon: Icons.health_and_safety, label: 'AI Health'),
+    _NavItem(icon: Icons.person_outline, activeIcon: Icons.person, label: 'Profile'),
+  ];
+
+  void _showNavMenu(BuildContext context, int currentIndex, void Function(int) onSelect) {
+    final theme = Theme.of(context);
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 36,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: theme.dividerColor,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(height: 12),
+              GridView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 3,
+                  childAspectRatio: 1.4,
+                  crossAxisSpacing: 8,
+                  mainAxisSpacing: 8,
+                ),
+                itemCount: _navItems.length,
+                itemBuilder: (ctx, i) {
+                  final item = _navItems[i];
+                  final selected = i == currentIndex;
+                  return InkWell(
+                    onTap: () {
+                      Navigator.pop(ctx);
+                      onSelect(i);
+                    },
+                    borderRadius: BorderRadius.circular(16),
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 150),
+                      decoration: BoxDecoration(
+                        color: selected
+                            ? theme.colorScheme.primaryContainer
+                            : theme.colorScheme.surfaceContainerLow,
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            selected ? item.activeIcon : item.icon,
+                            color: selected ? theme.colorScheme.primary : theme.colorScheme.onSurfaceVariant,
+                            size: 26,
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            item.label,
+                            style: theme.textTheme.labelSmall?.copyWith(
+                              color: selected ? theme.colorScheme.primary : theme.colorScheme.onSurfaceVariant,
+                              fontWeight: selected ? FontWeight.w600 : FontWeight.normal,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              ),
+              const SizedBox(height: 8),
+              Consumer<AuthProvider>(
+                builder: (context, authProvider, _) {
+                  if (authProvider.user == null) return const SizedBox.shrink();
+                  return ListTile(
+                    leading: const Icon(Icons.logout, color: Colors.red),
+                    title: const Text('Sign out', style: TextStyle(color: Colors.red)),
+                    onTap: () {
+                      Navigator.pop(ctx);
+                      authProvider.signOut();
+                    },
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  );
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildKioskLayout(BuildContext context) {
-    return _buildWebLayout(context);
+    final theme = Theme.of(context);
+    return Scaffold(
+      backgroundColor: theme.scaffoldBackgroundColor,
+      floatingActionButton: FloatingActionButton(
+        onPressed: () => _showNavMenu(
+          context,
+          _kioskSelectedIndex,
+          (i) => setState(() => _kioskSelectedIndex = i),
+        ),
+        tooltip: 'Navigation',
+        child: const Icon(Icons.menu_rounded),
+      ),
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+      body: Column(
+        children: [
+          Material(
+            color: theme.colorScheme.surface,
+            elevation: 1,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              child: Row(
+                children: [
+                  Icon(Icons.eco, color: theme.colorScheme.primary),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Consumer<DeviceProvider>(
+                      builder: (context, dp, _) {
+                        final n = dp.selectedDevice?.name;
+                        return Text(
+                          (n != null && n.isNotEmpty) ? n : 'PhytoPi',
+                          style: theme.textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w600,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        );
+                      },
+                    ),
+                  ),
+                  Text(
+                    _navItems[_kioskSelectedIndex].label,
+                    style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor),
+                  ),
+                  const SizedBox(width: 8),
+                ],
+              ),
+            ),
+          ),
+          Expanded(
+            child: IndexedStack(
+              index: _kioskSelectedIndex,
+              children: [
+                _buildDashboardContent(context),
+                const DevicesScreen(),
+                const ChartsScreen(),
+                const AlertsScreen(),
+                const AiHealthScreen(),
+                const ProfileScreen(),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
 
@@ -114,31 +277,43 @@ class _DashboardScreenState extends State<DashboardScreen> {
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
       appBar: AppBar(
-        title: const Text('PhytoPi'),
+        title: Consumer<DeviceProvider>(
+          builder: (context, dp, _) {
+            final n = dp.selectedDevice?.name;
+            return Text(
+              (n != null && n.isNotEmpty) ? n : 'PhytoPi',
+              overflow: TextOverflow.ellipsis,
+            );
+          },
+        ),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.person_outline),
+            tooltip: 'Profile',
+            onPressed: () => setState(() => _mobileSelectedIndex = 5),
+          ),
         ],
       ),
       drawer: _buildDrawer(context),
+      floatingActionButton: FloatingActionButton(
+        onPressed: () => _showNavMenu(
+          context,
+          _mobileSelectedIndex,
+          (i) => setState(() => _mobileSelectedIndex = i),
+        ),
+        tooltip: 'Navigation',
+        child: const Icon(Icons.menu_rounded),
+      ),
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
       body: IndexedStack(
         index: _mobileSelectedIndex,
         children: [
-          _buildDashboardContent(context), // Unified content builder
+          _buildDashboardContent(context),
           const DevicesScreen(),
           const ChartsScreen(),
           const AlertsScreen(),
           const AiHealthScreen(),
-        ],
-      ),
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: _mobileSelectedIndex,
-        onTap: (index) => setState(() => _mobileSelectedIndex = index),
-        type: BottomNavigationBarType.fixed,
-        items: const [
-          BottomNavigationBarItem(icon: Icon(Icons.dashboard), label: 'Dashboard'),
-          BottomNavigationBarItem(icon: Icon(Icons.devices), label: 'Devices'),
-          BottomNavigationBarItem(icon: Icon(Icons.bar_chart), label: 'Charts'),
-          BottomNavigationBarItem(icon: Icon(Icons.notifications), label: 'Alerts & Cmd'),
-          BottomNavigationBarItem(icon: Icon(Icons.health_and_safety), label: 'AI Health'),
+          const ProfileScreen(),
         ],
       ),
     );
@@ -206,12 +381,23 @@ class _DashboardScreenState extends State<DashboardScreen> {
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
       appBar: AppBar(
-        title: const Row(
-          children: [
-            Icon(Icons.eco),
-            SizedBox(width: 12),
-            Text('PhytoPi Dashboard'),
-          ],
+        title: Consumer<DeviceProvider>(
+          builder: (context, dp, _) {
+            final n = dp.selectedDevice?.name;
+            final label = (n != null && n.isNotEmpty) ? n : 'PhytoPi Dashboard';
+            return Row(
+              children: [
+                const Icon(Icons.eco),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    label,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            );
+          },
         ),
         actions: [
           // Claim Device moved to Devices tab
@@ -267,7 +453,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 const ChartsScreen(),
                 const AlertsScreen(),
                 const AiHealthScreen(),
-                _buildProfileView(context),
+                const ProfileScreen(),
               ],
             ),
           ),
@@ -276,166 +462,163 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  Widget _buildProfileView(BuildContext context) {
-    final theme = Theme.of(context);
-    return Consumer<AuthProvider>(
-      builder: (context, authProvider, child) {
-        final user = authProvider.user;
+  Widget _buildDeviceStatus(BuildContext context, ThemeData theme, DeviceProvider dp) {
+    final state = dp.actuatorState;
+    final device = dp.selectedDevice;
 
-        if (user == null) {
-          return _buildKioskSignInForm(context, authProvider, theme);
-        }
+    String _sinceText(String? isoKey) {
+      if (isoKey == null) return '';
+      final ts = DateTime.tryParse(isoKey);
+      if (ts == null) return '';
+      final diff = DateTime.now().toUtc().difference(ts.toUtc());
+      if (diff.inMinutes < 1) return 'just now';
+      if (diff.inHours < 1) return '${diff.inMinutes}m ago';
+      if (diff.inDays < 1) return '${diff.inHours}h ago';
+      return '${diff.inDays}d ago';
+    }
 
-        final email = user.email ?? 'Guest';
-        final initial = email.isNotEmpty ? email[0].toUpperCase() : '?';
-
-        return Center(
-          child: Container(
-            constraints: const BoxConstraints(maxWidth: 400),
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                CircleAvatar(
-                  radius: 48,
-                  backgroundColor: theme.primaryColor.withOpacity(0.1),
-                  child: Text(
-                    initial,
-                    style: theme.textTheme.headlineMedium?.copyWith(color: theme.primaryColor),
-                  ),
-                ),
-                const SizedBox(height: 24),
-                Text(
-                  'User Profile',
-                  style: theme.textTheme.headlineSmall,
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  email,
-                  style: theme.textTheme.bodyLarge?.copyWith(color: theme.textTheme.bodySmall?.color),
-                ),
-                const SizedBox(height: 48),
-                SizedBox(
-                  width: double.infinity,
-                  child: FilledButton.icon(
-                    onPressed: () async {
-                       await authProvider.signOut();
-                       if (context.mounted) {
-                         if (Navigator.canPop(context)) {
-                           Navigator.pop(context);
-                         }
-                       }
-                    },
-                    style: FilledButton.styleFrom(
-                      backgroundColor: Colors.red,
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                    ),
-                    icon: const Icon(Icons.logout),
-                    label: const Text('Logout'),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _buildKioskSignInForm(BuildContext context, AuthProvider authProvider, ThemeData theme) {
-    final emailController = TextEditingController();
-    final passwordController = TextEditingController();
-
-    return Center(
-      child: Container(
-        constraints: const BoxConstraints(maxWidth: 400),
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
+    Widget _chip({
+      required IconData icon,
+      required String label,
+      String? subtitle,
+      required bool active,
+      required bool ok,
+    }) {
+      final Color chipColor = !ok
+          ? Colors.red
+          : active
+              ? theme.colorScheme.primary
+              : theme.colorScheme.onSurfaceVariant.withOpacity(0.5);
+      final Color bgColor = !ok
+          ? Colors.red.withOpacity(0.1)
+          : active
+              ? theme.colorScheme.primaryContainer
+              : theme.colorScheme.surfaceContainerLow;
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: bgColor,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: chipColor.withOpacity(0.3)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.lock_outline, size: 48, color: theme.primaryColor),
-            const SizedBox(height: 16),
-            Text('Sign In', style: theme.textTheme.headlineSmall, textAlign: TextAlign.center),
-            const SizedBox(height: 8),
-            Text(
-              'Sign in to send commands to your device',
-              style: theme.textTheme.bodyMedium?.copyWith(color: theme.textTheme.bodySmall?.color),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 24),
-            OutlinedButton.icon(
-              onPressed: authProvider.isLoading
-                  ? null
-                  : () async {
-                      authProvider.clearError();
-                      await authProvider.signInWithOAuth(OAuthProvider.google);
-                      if (context.mounted && authProvider.error == null) {
-                        await context.read<DeviceProvider>().refreshDevices();
-                      }
-                    },
-              icon: const Icon(Icons.g_mobiledata, size: 24),
-              label: const Text('Sign in with Google'),
-              style: OutlinedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(vertical: 12),
-              ),
-            ),
-            const SizedBox(height: 24),
-            Row(children: [const Expanded(child: Divider()), Padding(padding: const EdgeInsets.symmetric(horizontal: 16), child: Text('or', style: theme.textTheme.bodySmall)), const Expanded(child: Divider())]),
-            const SizedBox(height: 24),
-            TextField(
-              controller: emailController,
-              decoration: const InputDecoration(
-                labelText: 'Email',
-                prefixIcon: Icon(Icons.email_outlined),
-                border: OutlineInputBorder(),
-              ),
-              keyboardType: TextInputType.emailAddress,
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: passwordController,
-              decoration: const InputDecoration(
-                labelText: 'Password',
-                prefixIcon: Icon(Icons.lock_outlined),
-                border: OutlineInputBorder(),
-              ),
-              obscureText: true,
-            ),
-            if (authProvider.error != null) ...[
-              const SizedBox(height: 12),
-              Text(
-                authProvider.error!,
-                style: const TextStyle(color: Colors.red),
-                textAlign: TextAlign.center,
-              ),
-            ],
-            const SizedBox(height: 24),
-            FilledButton.icon(
-              onPressed: authProvider.isLoading
-                  ? null
-                  : () async {
-                      authProvider.clearError();
-                      await authProvider.signIn(
-                        emailController.text.trim(),
-                        passwordController.text,
-                      );
-                      if (context.mounted && authProvider.error == null) {
-                        await context.read<DeviceProvider>().refreshDevices();
-                      }
-                    },
-              icon: authProvider.isLoading
-                  ? const SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                    )
-                  : const Icon(Icons.login),
-              label: const Text('Sign In'),
+            Icon(icon, size: 16, color: chipColor),
+            const SizedBox(width: 6),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(label,
+                    style: theme.textTheme.labelMedium?.copyWith(
+                        color: chipColor, fontWeight: FontWeight.w600)),
+                if (subtitle != null && subtitle.isNotEmpty)
+                  Text(subtitle,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                          color: chipColor.withOpacity(0.8), fontSize: 10)),
+              ],
             ),
           ],
         ),
-      ),
+      );
+    }
+
+    final bool lightsOn   = state?['lights_on'] as bool? ?? false;
+    final bool pumpOn     = state?['pump_on']    as bool? ?? false;
+    final int  fanDuty    = (state?['fan_duty']  as num?)?.toInt() ?? 0;
+    final bool bmeOk      = state?['bme_ok']     as bool? ?? true;
+    final bool soilOk     = state?['soil_ok']    as bool? ?? true;
+    final String lightsTs = _sinceText(state?['lights_changed_at'] as String?);
+    final String pumpTs   = _sinceText(state?['pump_changed_at']   as String?);
+    final String fanTs    = _sinceText(state?['fan_changed_at']    as String?);
+    final bool online     = device?.isOnline ?? false;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Text('Device Status', style: theme.textTheme.titleLarge),
+            const SizedBox(width: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              decoration: BoxDecoration(
+                color: online ? Colors.green.withOpacity(0.15) : Colors.red.withOpacity(0.12),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.circle, size: 8,
+                      color: online ? Colors.green : Colors.red),
+                  const SizedBox(width: 4),
+                  Text(online ? 'Online' : 'Offline',
+                      style: theme.textTheme.labelSmall?.copyWith(
+                          color: online ? Colors.green[700] : Colors.red[700])),
+                ],
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            _chip(
+              icon: lightsOn ? Icons.lightbulb : Icons.lightbulb_outline,
+              label: lightsOn ? 'Lights ON' : 'Lights OFF',
+              subtitle: lightsTs,
+              active: lightsOn,
+              ok: true,
+            ),
+            _chip(
+              icon: pumpOn ? Icons.water : Icons.water_drop_outlined,
+              label: pumpOn ? 'Pump ON' : 'Pump OFF',
+              subtitle: pumpTs,
+              active: pumpOn,
+              ok: true,
+            ),
+            _chip(
+              icon: fanDuty > 0 ? Icons.air : Icons.air_outlined,
+              label: fanDuty > 0 ? 'Fans $fanDuty%' : 'Fans OFF',
+              subtitle: fanTs,
+              active: fanDuty > 0,
+              ok: true,
+            ),
+            _chip(
+              icon: bmeOk ? Icons.sensors : Icons.sensors_off,
+              label: bmeOk ? 'BME680 OK' : 'BME680 Error',
+              subtitle: '',
+              active: bmeOk,
+              ok: bmeOk,
+            ),
+            _chip(
+              icon: soilOk ? Icons.grass : Icons.grass_outlined,
+              label: soilOk ? 'Soil Sensor OK' : 'Soil Sensor Error',
+              subtitle: '',
+              active: soilOk,
+              ok: soilOk,
+            ),
+            _chip(
+              icon: Icons.videocam_outlined,
+              label: 'Live Camera',
+              subtitle: 'AI Health tab',
+              active: true,
+              ok: true,
+            ),
+          ],
+        ),
+        if (state == null)
+          Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: Text(
+              'Status will appear once the device syncs (requires migration + firmware update).',
+              style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor),
+            ),
+          ),
+      ],
     );
   }
 
@@ -452,7 +635,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
         final tempPoints = historicalReadings['temp_c'] ?? [];
         final humidityPoints = historicalReadings['humidity'] ?? [];
-        final lightPoints = historicalReadings['light_lux'] ?? [];
         final soilPoints = historicalReadings['soil_moisture'] ?? [];
         final waterPoints = historicalReadings['water_level_frequency'] ?? historicalReadings['water_level'] ?? [];
 
@@ -462,16 +644,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                'Overview',
-                style: theme.textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Monitor your plant environment in real-time',
-                style: theme.textTheme.bodyLarge?.copyWith(color: theme.textTheme.bodySmall?.color),
-              ),
-              const SizedBox(height: 32),
               
               if (selectedDevice == null)
                 Container(
@@ -632,13 +804,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         SizedBox(
                           width: (width - (16 * (count - 1))) / count,
                           height: 250,
-                          child: DashboardGauge(
-                            title: 'Gas / VOC',
+                          child: DashboardGauge.gasVoc(
                             value: latestReadings['gas_resistance'] ?? 0,
-                            min: 0,
-                            max: 500,
-                            unit: 'kOhm',
-                            color: Colors.teal,
                           ),
                         ),
                       ],
@@ -653,88 +820,76 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 const SizedBox(height: 16),
                 Stack(
                   children: [
-                    Column(
-                      children: [
-                        SizedBox(
-                          height: 400,
-                          child: Row(
-                            children: [
-                              Expanded(
-                                child: DashboardChart(
-                                  title: 'Temperature Trend',
-                                  dataPoints: tempPoints,
-                                  minY: 10, // Adjusted min to show variation better if room temp
-                                  maxY: 40,
-                                  unit: '°C',
-                                  color: Colors.orange,
-                                ),
-                              ),
-                              const SizedBox(width: 16),
-                              Expanded(
-                                child: DashboardChart(
-                                  title: 'Humidity Trend',
-                                  dataPoints: humidityPoints,
-                                  minY: 20,
-                                  maxY: 100,
-                                  unit: '%',
-                                  color: Colors.blue,
-                                ),
-                              ),
-                            ],
+                    LayoutBuilder(
+                      builder: (context, constraints) {
+                        final wide = constraints.maxWidth >= 700;
+                        Widget tempChart = SizedBox(
+                          height: 280,
+                          child: DashboardChart(
+                            title: 'Temperature Trend',
+                            dataPoints: tempPoints,
+                            minY: 10,
+                            maxY: 40,
+                            unit: '°C',
+                            color: Colors.orange,
                           ),
-                        ),
-                        const SizedBox(height: 16),
-                        SizedBox(
-                          height: 400,
-                          child: Row(
-                            children: [
-                              Expanded(
-                                child: DashboardChart(
-                                  title: 'Light Trend',
-                                  dataPoints: lightPoints,
-                                  minY: 0,
-                                  maxY: 2000,
-                                  unit: 'lux',
-                                  color: Colors.amber,
-                                ),
-                              ),
-                              const SizedBox(width: 16),
-                              Expanded(
-                                child: DashboardChart(
-                                  title: 'Soil Moisture Trend',
-                                  dataPoints: soilPoints,
-                                  minY: 0,
-                                  maxY: 100,
-                                  unit: '%',
-                                  color: Colors.green,
-                                ),
-                              ),
-                            ],
+                        );
+                        Widget humidityChart = SizedBox(
+                          height: 280,
+                          child: DashboardChart(
+                            title: 'Air Humidity Trend',
+                            dataPoints: humidityPoints,
+                            minY: 20,
+                            maxY: 100,
+                            unit: '%',
+                            color: Colors.blue,
                           ),
-                        ),
-                        const SizedBox(height: 16),
-                        SizedBox(
-                          height: 400,
-                          child: Row(
-                            children: [
-                              Expanded(
-                                child: DashboardChart(
-                                  title: 'Water Level Trend',
-                                  dataPoints: waterPoints,
-                                  minY: 0,
-                                  maxY: (historicalReadings['water_level_frequency']?.isNotEmpty ?? false) ? 4 : 100,
-                                  unit: (historicalReadings['water_level_frequency']?.isNotEmpty ?? false) ? 'level' : '%',
-                                  color: Colors.cyan,
+                        );
+                        return Column(
+                          children: [
+                            if (wide)
+                              SizedBox(
+                                height: 280,
+                                child: Row(
+                                  children: [
+                                    Expanded(child: tempChart),
+                                    const SizedBox(width: 16),
+                                    Expanded(child: humidityChart),
+                                  ],
                                 ),
-                              ),
-                              const SizedBox(width: 16),
-                              const Expanded(
-                                child: SizedBox(), // Placeholder to keep alignment if we had 4 items
-                              ),
+                              )
+                            else ...[
+                              tempChart,
+                              const SizedBox(height: 16),
+                              humidityChart,
                             ],
-                          ),
-                        ),
-                      ],
+                            const SizedBox(height: 16),
+                            SizedBox(
+                              height: 280,
+                              child: DashboardChart(
+                                title: 'Soil Moisture Trend',
+                                dataPoints: soilPoints,
+                                minY: 0,
+                                maxY: 100,
+                                unit: '%',
+                                color: Colors.green,
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                            SizedBox(
+                              height: 280,
+                              child: DashboardChart(
+                                title: 'Water Level Trend',
+                                dataPoints: waterPoints,
+                                minY: 0,
+                                maxY: (historicalReadings['water_level_frequency']?.isNotEmpty ?? false) ? 4 : 100,
+                                unit: (historicalReadings['water_level_frequency']?.isNotEmpty ?? false) ? 'level' : '%',
+                                color: Colors.cyan,
+                              ),
+                            ),
+                          ],
+                        );
+                      },
                     ),
                     if (!hasReadings)
                       Positioned.fill(
@@ -760,6 +915,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       ),
                   ],
                 ),
+
+                const SizedBox(height: 32),
+                // DEVICE STATUS SECTION
+                _buildDeviceStatus(context, theme, deviceProvider),
               ],
             ],
           ),
@@ -767,4 +926,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
       }
     );
   }
+}
+
+class _NavItem {
+  final IconData icon;
+  final IconData activeIcon;
+  final String label;
+  const _NavItem({required this.icon, required this.activeIcon, required this.label});
 }

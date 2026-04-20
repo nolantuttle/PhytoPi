@@ -2,6 +2,7 @@ import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/device_provider.dart';
+import '../widgets/chart_axis_utils.dart';
 import '../widgets/dashboard_chart.dart';
 
 class ChartsScreen extends StatefulWidget {
@@ -46,11 +47,11 @@ class _ChartsScreenState extends State<ChartsScreen> {
 
         final tempPoints = _filterDataByTimeFrame(historicalReadings['temp_c'] ?? []);
         final humidityPoints = _filterDataByTimeFrame(historicalReadings['humidity'] ?? []);
-        final lightPoints = _filterDataByTimeFrame(historicalReadings['light_lux'] ?? []);
         final soilPoints = _filterDataByTimeFrame(historicalReadings['soil_moisture'] ?? []);
         final waterPoints = _filterDataByTimeFrame(historicalReadings['water_level_frequency'] ?? historicalReadings['water_level'] ?? []);
         final pressurePoints = _filterDataByTimeFrame(historicalReadings['pressure'] ?? []);
         final gasPoints = _filterDataByTimeFrame(historicalReadings['gas_resistance'] ?? []);
+        final gasY = gasResistanceAxisBounds(gasPoints);
 
         return Scaffold(
           backgroundColor: Colors.transparent,
@@ -157,20 +158,6 @@ class _ChartsScreenState extends State<ChartsScreen> {
                   ),
                   const SizedBox(height: 24),
 
-                  // Light Chart
-                  _buildChartContainer(
-                    context,
-                    DashboardChart(
-                      title: 'Light Level',
-                      dataPoints: lightPoints,
-                      minY: 0,
-                      maxY: 2000,
-                      unit: 'lux',
-                      color: Colors.amber,
-                    ),
-                  ),
-                  const SizedBox(height: 24),
-
                   // Soil Moisture Chart
                   _buildChartContainer(
                     context,
@@ -217,10 +204,10 @@ class _ChartsScreenState extends State<ChartsScreen> {
                   _buildChartContainer(
                     context,
                     DashboardChart(
-                      title: 'Gas / VOC',
+                      title: 'Gas / VOC (kΩ — higher often means cleaner air)',
                       dataPoints: gasPoints,
-                      minY: 0,
-                      maxY: 500,
+                      minY: gasY.minY,
+                      maxY: gasY.maxY,
                       unit: 'kOhm',
                       color: Colors.teal,
                     ),

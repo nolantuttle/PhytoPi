@@ -137,7 +137,9 @@ class _AppRootState extends State<AppRoot> {
         DeviceOrientation.landscapeRight,
         DeviceOrientation.portraitUp,
       ]);
-      await SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersive);
+      // immersiveSticky keeps system UI hidden even after an accidental swipe/touch,
+      // unlike plain immersive which lets a swipe peek the status bar.
+      await SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
     } catch (e) {
       debugPrint('Kiosk mode setup error: $e');
     }
@@ -270,7 +272,22 @@ class PhytoPiApp extends StatelessWidget {
                   ),
                 );
               };
-              return child ?? const SizedBox.shrink();
+              final theme = Theme.of(context);
+              final isDark = theme.brightness == Brightness.dark;
+              // Wrap the entire app in a subtle gradient for Frutiger Aero effect.
+              // Solid fallback colors ensure Pi performance is not impacted.
+              return Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: isDark
+                        ? [const Color(0xFF0D1B1E), const Color(0xFF0A1512)]
+                        : [const Color(0xFFEBF7F5), const Color(0xFFE0F2FF)],
+                  ),
+                ),
+                child: child ?? const SizedBox.shrink(),
+              );
             },
             home: Consumer<AuthProvider>(
               builder: (context, authProvider, _) {

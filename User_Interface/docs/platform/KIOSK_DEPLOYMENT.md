@@ -165,53 +165,52 @@ sudo systemctl enable phytopi-kiosk.service
 sudo systemctl start phytopi-kiosk.service
 ```
 
-#### Option B: Autostart Script (LXDE)
+#### Option B: Autostart Script (LXDE) — Recommended for Pi display
 
-Create an autostart script:
+Create an autostart script that **omits** `lxpanel` so the Pi top bar never appears:
 
 ```bash
 nano ~/.config/lxsession/LXDE-pi/autostart
 ```
 
-Add:
+Replace the entire file with the following (note: `@lxpanel` is intentionally absent):
 
 ```bash
-@lxpanel --profile LXDE-pi
+# Do NOT start lxpanel — the PhytoPi kiosk uses full-screen Flutter.
 @pcmanfm --desktop --profile LXDE-pi
-@xscreensaver -no-splash
 @xset s off
 @xset -dpms
 @xset s noblank
+@unclutter -idle 3 -root
 @/home/pi/phytopi-kiosk/bundle/phytopi_dashboard
 ```
 
+> **Pi top bar (lxpanel):** If the Pi panel still appears after removing it from autostart, kill it manually with `pkill lxpanel` and verify your autostart file path with `cat ~/.config/lxsession/LXDE-pi/autostart`. On Raspberry Pi OS Bookworm with Wayland (`wayfire`), disable the panel via the Wayfire config or switch to the X11 session before deploying.
+
 ### 4. Configure Kiosk Mode Settings
 
-#### Hide Cursor (Optional)
+#### Hide Cursor
 
 ```bash
-# Install unclutter
 sudo apt install -y unclutter
-
-# Add to autostart
-unclutter -idle 5 -root
+# Already included in the autostart line above: @unclutter -idle 3 -root
 ```
 
 #### Disable Screensaver
 
 ```bash
-# Install x11-xserver-utils
 sudo apt install -y x11-xserver-utils
-
-# Add to autostart
-xset s off
-xset -dpms
-xset s noblank
+# Already included in the autostart lines above: xset s off / -dpms / s noblank
 ```
 
 #### Fullscreen Mode
 
-The Flutter app automatically enables fullscreen in kiosk mode. Ensure your window manager supports fullscreen applications.
+The Flutter app automatically requests immersive-sticky fullscreen in kiosk mode (`SystemUiMode.immersiveSticky`). The system UI stays hidden even after an accidental touch. To verify on a Pi after deployment:
+
+```bash
+# Run the app and check it occupies the full screen with no status bar or panel.
+# If a panel still shows, re-check the autostart file and pkill lxpanel.
+```
 
 ### 5. Network Configuration
 

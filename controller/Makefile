@@ -6,7 +6,7 @@ LDFLAGS = -lgpiod -lpthread -lrt -lsqlite3 -lcurl -ljson-c
 $(if $(wildcard lib/BME68x_SensorAPI/bme68x.h),,$(error BME68x library missing. Run: git submodule update --init --recursive))
 BINDIR = bin
 
-SRC = src/main.c src/gpio.c src/sql.c src/supabase.c src/commands.c src/bme680.c lib/BME68x_SensorAPI/bme68x.c
+SRC = src/main.c src/gpio.c src/state.c src/sql.c src/supabase.c src/commands.c src/bme680.c lib/BME68x_SensorAPI/bme68x.c
 OBJ = $(SRC:.c=.o)
 
 TARGET = $(BINDIR)/phytopi

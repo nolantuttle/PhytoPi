@@ -314,6 +314,10 @@ enabled = false
 # Obtain from https://clerk.com/setup/supabase
 # domain = "example.clerk.accounts.dev"
 
+# Webhook calls this function with Authorization: Bearer NOTIFY_ALERT_SECRET (no end-user JWT).
+[functions.notify-alert]
+verify_jwt = false
+
 [edge_runtime]
 enabled = true
 # Supported request policies: `oneshot`, `per_worker`.

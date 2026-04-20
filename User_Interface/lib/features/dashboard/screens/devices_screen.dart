@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../models/device_model.dart';
 import '../providers/device_provider.dart';
 
 class DevicesScreen extends StatefulWidget {
@@ -10,6 +11,57 @@ class DevicesScreen extends StatefulWidget {
 }
 
 class _DevicesScreenState extends State<DevicesScreen> {
+  Future<void> _showRenameDeviceDialog(
+      BuildContext context, Device device) async {
+    final controller = TextEditingController(text: device.name);
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Rename device'),
+        content: TextField(
+          controller: controller,
+          decoration: const InputDecoration(
+            labelText: 'Display name',
+            border: OutlineInputBorder(),
+          ),
+          autofocus: true,
+          onSubmitted: (_) => Navigator.pop(ctx, true),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+    final name = controller.text.trim();
+    controller.dispose();
+    if (ok != true || !context.mounted) return;
+    if (name.isEmpty) return;
+    try {
+      await context.read<DeviceProvider>().updateDeviceName(device.id, name);
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Device name updated')),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Could not update name: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
   void _showClaimDeviceDialog(BuildContext context) {
     final deviceIdController = TextEditingController();
     showDialog(
@@ -83,6 +135,7 @@ class _DevicesScreenState extends State<DevicesScreen> {
             icon: const Icon(Icons.add),
             label: const Text('Claim Device'),
           ),
+          floatingActionButtonLocation: FloatingActionButtonLocation.startFloat,
           body: RefreshIndicator(
             onRefresh: () => deviceProvider.refreshDevices(),
             child: SingleChildScrollView(
@@ -167,8 +220,15 @@ class _DevicesScreenState extends State<DevicesScreen> {
                                           overflow: TextOverflow.ellipsis,
                                         ),
                                       ),
+                                      IconButton(
+                                        tooltip: 'Rename',
+                                        icon: const Icon(Icons.edit_outlined, size: 20),
+                                        onPressed: () =>
+                                            _showRenameDeviceDialog(context, device),
+                                      ),
                                       if (isSelected)
-                                        Icon(Icons.check_circle, color: Theme.of(context).primaryColor),
+                                        Icon(Icons.check_circle,
+                                            color: Theme.of(context).primaryColor),
                                     ],
                                   ),
                                   const Spacer(),

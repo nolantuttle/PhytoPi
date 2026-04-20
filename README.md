@@ -1,6 +1,6 @@
 # PhytoPi
 
-An intelligent IoT-based plant monitoring and control system. PhytoPi combines a Raspberry Pi sensor controller with a Flutter kiosk dashboard and a Supabase cloud backend to automate plant cultivation with minimal human intervention.
+PhytoPi is an intelligent IoT-based controlled environment system for autonomous plant cultivation. Built on a Raspberry Pi 5 embedded controller, a Flutter kiosk dashboard, and a Supabase cloud backend, the system automates lighting, watering, and climate regulation with minimal human intervention. A live camera feed drives a two-stage machine learning pipeline for continuous AI-powered plant health analysis and growth monitoring.
 
 ---
 
@@ -9,18 +9,18 @@ An intelligent IoT-based plant monitoring and control system. PhytoPi combines a
 ### Docker stack
 
 ```bash
-# Start all services
+# Start all services (project name matches systemd: phytopi)
 cd /home/phytopi/PhytoPi
-docker compose -f docker-compose.rpi.yml up -d
+docker compose -p phytopi -f docker-compose.rpi.yml up -d
 
 # Stop all services
-docker compose -f docker-compose.rpi.yml down
+docker compose -p phytopi -f docker-compose.rpi.yml down
 
 # Restart a single service  (sensors | camera | ai | updater)
-docker compose -f docker-compose.rpi.yml restart sensors
+docker compose -p phytopi -f docker-compose.rpi.yml restart sensors
 
 # View status of all containers
-docker compose -f docker-compose.rpi.yml ps
+docker compose -p phytopi -f docker-compose.rpi.yml ps
 
 # Live logs (line-buffered, real-time)
 docker logs phytopi-sensors -f
@@ -39,13 +39,15 @@ sudo systemctl stop    phytopi-ui.service
 sudo systemctl restart phytopi-ui.service
 sudo systemctl status  phytopi-ui.service
 
-# Rebuild the Flutter bundle after UI source changes
+# Rebuild the Flutter bundle (load env first — see "Rebuilding the system")
 cd /home/phytopi/PhytoPi/User_Interface
+set -a && source /home/phytopi/PhytoPi/User_Interface/.env.kiosk && set +a
+/home/phytopi/flutter/bin/flutter pub get
 /home/phytopi/flutter/bin/flutter build linux --release \
   --dart-define=KIOSK_MODE=true \
   --dart-define=SUPABASE_URL="${SUPABASE_URL}" \
   --dart-define=SUPABASE_ANON_KEY="${SUPABASE_ANON_KEY}"
-# systemd auto-restarts the app once the binary changes
+sudo systemctl restart phytopi-ui.service
 ```
 
 ### Boot persistence (run once on first setup)
@@ -73,9 +75,111 @@ bash scripts/update.sh
 ### Rebuild a service after Dockerfile changes
 
 ```bash
-docker compose -f docker-compose.rpi.yml build --no-cache sensors
-docker compose -f docker-compose.rpi.yml up -d sensors
+docker compose -p phytopi -f docker-compose.rpi.yml build --no-cache sensors
+docker compose -p phytopi -f docker-compose.rpi.yml up -d sensors
 ```
+
+---
+
+## Rebuilding the system after modifications
+
+Use the row that matches what you changed. For a **full release** (database + firmware + UI), follow **A → B → C** in order so tables and APIs exist before the Pi firmware and Flutter app call them.
+
+| You changed | Rebuild / deploy |
+|-------------|------------------|
+| SQL under `data/supabase/migrations/`, or Edge Functions under `data/supabase/functions/` | **A. Supabase** (`db push`, deploy functions, secrets, webhooks) |
+| C sources or Dockerfiles under `PhytoPI_Controler/` (sensors container) | **B. Docker** — `sensors` service |
+| `Dockerfile.camera` or camera scripts in `PhytoPI_Controler/` | **B. Docker** — `camera` service |
+| `docker/updater/` or updater compose service | **B. Docker** — `updater` service |
+| Flutter under `User_Interface/` | **C. Flutter kiosk** |
+
+The systemd unit [`systemd/docker-compose-phytopi.service`](systemd/docker-compose-phytopi.service) uses **`COMPOSE_PROJECT_NAME=phytopi`**, so use **`-p phytopi`** with `docker compose` to match running containers.
+
+### A. Supabase (remote project)
+
+From the directory that contains the `supabase/` folder ([`data/supabase/`](data/supabase)):
+
+```bash
+cd /home/phytopi/PhytoPi/data
+```
+
+**One-time link** (needs your [project ref](https://supabase.com/dashboard/project/_/settings/general) and database password):
+
+```bash
+supabase link --project-ref YOUR_PROJECT_REF
+```
+
+**Apply new migrations** to the linked remote database:
+
+```bash
+supabase db push
+```
+
+**Edge Functions** (when `data/supabase/functions/<name>/` changed). Example for `notify-alert`:
+
+```bash
+supabase functions deploy notify-alert --no-verify-jwt --project-ref YOUR_PROJECT_REF
+```
+
+**Secrets** the functions expect (set in the dashboard or via CLI; names depend on your functions):
+
+```bash
+supabase secrets set KEY=value --project-ref YOUR_PROJECT_REF
+```
+
+**Database webhooks** (e.g. calling an Edge Function on `INSERT` into `alerts`) are configured in the Supabase Dashboard, not via migrations—see comments in the relevant migration SQL.
+
+**Local Supabase** (optional dev): `supabase start` from `data/` runs Docker services for that project. `supabase status` only applies when that local stack is running; it is **not** required for `db push` / `functions deploy` to a hosted project.
+
+### B. Raspberry Pi Docker stack
+
+From the repo root, with `.env` present (Supabase URL, keys, device and sensor UUIDs—see project root `.env`):
+
+```bash
+cd /home/phytopi/PhytoPi
+
+# Sensors / controller (after PhytoPI_Controler or Dockerfile.sensors changes)
+docker compose -p phytopi -f docker-compose.rpi.yml build sensors
+docker compose -p phytopi -f docker-compose.rpi.yml up -d sensors
+
+# Camera stream (after camera Dockerfile or scripts change)
+docker compose -p phytopi -f docker-compose.rpi.yml build camera
+docker compose -p phytopi -f docker-compose.rpi.yml up -d camera
+
+# Updater image
+docker compose -p phytopi -f docker-compose.rpi.yml build updater
+docker compose -p phytopi -f docker-compose.rpi.yml up -d updater
+```
+
+**Logs:** `docker logs phytopi-sensors -f` (and similarly for `phytopi-camera`, `phytopi-updater`).
+
+**Note:** The `ui` service in `docker-compose.rpi.yml` is under `profiles: [disabled]`; the kiosk runs **natively** via `phytopi-ui.service`, not this container.
+
+### C. Flutter kiosk UI (Linux on the Pi)
+
+`SUPABASE_URL`, `SUPABASE_ANON_KEY`, and `KIOSK_MODE` are baked in at **compile time** (`--dart-define`). Optional: `PHYTOPI_STREAM_URL` for the camera MJPEG URL (default in code is `http://phytopi.local:8000/stream.mjpg`).
+
+```bash
+set -a && source /home/phytopi/PhytoPi/User_Interface/.env.kiosk && set +a
+cd /home/phytopi/PhytoPi/User_Interface
+/home/phytopi/flutter/bin/flutter pub get
+/home/phytopi/flutter/bin/flutter build linux --release \
+  --dart-define=SUPABASE_URL="$SUPABASE_URL" \
+  --dart-define=SUPABASE_ANON_KEY="$SUPABASE_ANON_KEY" \
+  --dart-define=KIOSK_MODE=true
+sudo systemctl restart phytopi-ui.service
+```
+
+### Automated pull-based update (optional)
+
+After `git pull`, this script rebuilds the Linux UI when `User_Interface/**` changed and rebuilds Docker services when controller/camera/updater paths changed:
+
+```bash
+cd /home/phytopi/PhytoPi
+bash scripts/update.sh
+```
+
+It does **not** run `supabase db push` or deploy Edge Functions—you still do **A** when the remote database or functions change.
 
 ---
 
@@ -84,10 +188,10 @@ docker compose -f docker-compose.rpi.yml up -d sensors
 ```
 PhytoPi/
 ├── User_Interface/          # Flutter Dashboard (Web, Mobile, Kiosk)
-├── PhytoPI_Controler/       # Raspberry Pi Controller (C)
-├── Data_Infraestructure/    # Supabase Database & Backend
-│   └── supabase/
-└── Documentation/           # Project Documentation
+├── PhytoPI_Controler/       # Raspberry Pi controller sources (Docker build context for Pi stack)
+├── controller/              # Same controller tree tracked in git (keep in sync with PhytoPI_Controler when developing)
+├── data/supabase/           # Supabase config, migrations, Edge Functions
+└── systemd/                 # Boot units for Docker stack + native kiosk UI
 ```
 
 ## Components
@@ -154,22 +258,22 @@ PostgreSQL-based backend that provides:
 
 ### Infrastructure Setup (Supabase)
 
-1. **Navigate to the Supabase directory:**
+1. **Navigate to the Supabase project directory:**
    ```bash
-   cd Data_Infraestructure/supabase
+   cd data
    ```
 
-2. **Start Supabase locally:**
+2. **Start Supabase locally** (optional):
    ```bash
    supabase start
    ```
 
-3. **Apply migrations:**
+3. **Apply migrations** (local reset, destructive):
    ```bash
    supabase db reset
    ```
 
-For detailed setup instructions, see `Data_Infraestructure/supabase/LOCAL_DEVELOPMENT.md`.
+For hosted projects, use `supabase link` and `supabase db push` as described in **Rebuilding the system after modifications**. Additional docs live under `data/supabase/`.
 
 ### Raspberry Pi Controller Setup
 
@@ -198,7 +302,7 @@ Comprehensive documentation is available in each component directory:
 
 - **User Interface**: See `User_Interface/docs/` for platform guides, deployment instructions, and configuration
 - **Controller**: See `PhytoPI_Controler/README.md` and `PhytoPI_Controler/TESTING_GUIDE.md`
-- **Infrastructure**: See `Data_Infraestructure/supabase/` for database schema, migrations, and setup guides
+- **Infrastructure**: See `data/supabase/` for database schema, migrations, Edge Functions, and setup guides
 
 ## Development
 

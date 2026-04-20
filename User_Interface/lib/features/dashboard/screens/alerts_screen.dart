@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
+import '../../../core/config/supabase_config.dart';
 import '../providers/device_provider.dart';
 
 class AlertsScreen extends StatefulWidget {
@@ -17,9 +18,7 @@ class _AlertsScreenState extends State<AlertsScreen>
   final ScrollController _commandsScrollController = ScrollController();
   final ScrollController _schedulesScrollController = ScrollController();
   final ScrollController _thresholdsScrollController = ScrollController();
-  bool _lightsOn = false;
-  bool _pumpOn = false;
-  bool _fansOn = false;
+  // Commands state is driven entirely from DeviceProvider.actuatorState — no local defaults needed.
   String? _historySeverityFilter; // null = all, 'critical', 'high', 'medium', 'low'
 
   @override
@@ -171,8 +170,8 @@ class _AlertsScreenState extends State<AlertsScreen>
     final type = a['type'] as String? ?? '';
     final message = a['message'] as String? ?? '';
     final severity = a['severity'] as String? ?? 'medium';
-    final triggered = a['triggered_at'] != null ? DateTime.parse(a['triggered_at']) : null;
-    final closed = a['resolved_at'] != null ? DateTime.parse(a['resolved_at']) : null;
+    final triggered = a['triggered_at'] != null ? DateTime.parse(a['triggered_at']).toLocal() : null;
+    final closed = a['resolved_at'] != null ? DateTime.parse(a['resolved_at']).toLocal() : null;
     final id = a['id'] as String? ?? '';
 
     Color severityColor = Colors.grey;
@@ -217,6 +216,10 @@ class _AlertsScreenState extends State<AlertsScreen>
 
   Widget _buildCommandsTab(DeviceProvider deviceProvider) {
     final theme = Theme.of(context);
+    final state = deviceProvider.actuatorState;
+    final lightsOn = state?['lights_on'] as bool? ?? false;
+    final pumpOn   = state?['pump_on']   as bool? ?? false;
+    final fansOn   = ((state?['fan_duty'] as num?)?.toInt() ?? 0) > 0;
 
     return SingleChildScrollView(
       controller: _commandsScrollController,
@@ -230,46 +233,43 @@ class _AlertsScreenState extends State<AlertsScreen>
             title: 'Lights',
             icon: Icons.lightbulb,
             onPressed: () async {
-              final target = !_lightsOn;
+              final target = !lightsOn;
               try {
                 await deviceProvider.toggleGrowLights(target);
-                if (mounted) setState(() => _lightsOn = target);
                 _showSnack('Lights ${target ? "ON" : "OFF"}');
               } catch (e) {
                 _showSnack('Failed to toggle lights: $e');
               }
             },
-            state: _lightsOn,
+            state: lightsOn,
           ),
           _commandCard(
             title: 'Pump',
             icon: Icons.water_drop,
             onPressed: () async {
-              final target = !_pumpOn;
+              final target = !pumpOn;
               try {
                 await deviceProvider.togglePump(target, durationSec: 30);
-                if (mounted) setState(() => _pumpOn = target);
                 _showSnack('Pump ${target ? "ON" : "OFF"} (30s)');
               } catch (e) {
                 _showSnack('Failed to toggle pump: $e');
               }
             },
-            state: _pumpOn,
+            state: pumpOn,
           ),
           _commandCard(
             title: 'Fans',
             icon: Icons.air,
             onPressed: () async {
-              final target = !_fansOn;
+              final target = !fansOn;
               try {
                 await deviceProvider.toggleFans(target);
-                if (mounted) setState(() => _fansOn = target);
                 _showSnack('Fans ${target ? "ON" : "OFF"}');
               } catch (e) {
                 _showSnack('Failed to toggle fans: $e');
               }
             },
-            state: _fansOn,
+            state: fansOn,
           ),
           const SizedBox(height: 24),
           OutlinedButton.icon(
@@ -353,7 +353,7 @@ class _AlertsScreenState extends State<AlertsScreen>
       padding: const EdgeInsets.all(16),
       children: [
         Text(
-          'Automate lights, pump, or ventilation. The device checks schedules every 60 seconds.',
+          'Automate lights, pump, or ventilation. The device checks schedules every 60 seconds. Cron times ("At HH:mm") run on the device\'s local clock — ensure the Pi timezone matches yours.',
           style: theme.textTheme.bodyMedium?.copyWith(color: theme.hintColor),
         ),
         const SizedBox(height: 16),
@@ -393,7 +393,7 @@ class _AlertsScreenState extends State<AlertsScreen>
     final label = _scheduleTypes.firstWhere((m) => m['key'] == type, orElse: () => {'label': type})['label']!;
     final cronExpr = s['cron_expr'] as String? ?? '';
     final intervalSec = s['interval_seconds'] as int?;
-    final lastRun = s['last_run_at'] != null ? DateTime.tryParse(s['last_run_at']) : null;
+    final lastRun = s['last_run_at'] != null ? DateTime.tryParse(s['last_run_at'])?.toLocal() : null;
     final enabled = s['enabled'] as bool? ?? true;
     final id = s['id'] as String? ?? '';
     final payload = s['payload'] as Map<String, dynamic>? ?? {};
@@ -774,12 +774,12 @@ class _AlertsScreenState extends State<AlertsScreen>
 
   static const List<Map<String, String>> _thresholdMetrics = [
     {'key': 'temp_c', 'label': 'Temperature (°C)'},
-    {'key': 'humidity', 'label': 'Humidity (%)'},
+    {'key': 'humidity', 'label': 'Air Humidity (%)'},
+    {'key': 'soil_moisture', 'label': 'Soil Moisture (%)'},
     {'key': 'pressure', 'label': 'Pressure (hPa)'},
     {'key': 'gas_resistance', 'label': 'Gas / VOC (kOhm)'},
     {'key': 'water_level_low', 'label': 'Water Level Low'},
-    {'key': 'soil_moisture', 'label': 'Soil Moisture (%)'},
-    {'key': 'light_lux', 'label': 'Light (lux)'},
+    {'key': 'fan_duty', 'label': 'Fan / Ventilation Duty (%)'},
   ];
 
   Widget _buildThresholdsTab(DeviceProvider deviceProvider) {
@@ -791,10 +791,58 @@ class _AlertsScreenState extends State<AlertsScreen>
       padding: const EdgeInsets.all(16),
       children: [
         Text(
-          'Thresholds define min/max ranges for alerts. The device checks every 60 seconds.',
+          'Thresholds define min/max ranges for alerts. The device checks every 60 seconds and sends at most one alert per metric every 15 minutes.',
           style: theme.textTheme.bodyMedium?.copyWith(color: theme.hintColor),
         ),
         const SizedBox(height: 16),
+        Card(
+          margin: const EdgeInsets.only(bottom: 16),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Plant presets',
+                  style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Apply default soil/temp/humidity thresholds plus light and pump schedules suited to indoor basil.',
+                  style: theme.textTheme.bodyMedium,
+                ),
+                const SizedBox(height: 12),
+                FilledButton.tonalIcon(
+                  onPressed: !SupabaseConfig.isInitialized
+                      ? null
+                      : () async {
+                          try {
+                            await deviceProvider.applyBasilPreset();
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('Basil defaults applied (thresholds + schedules)'),
+                                ),
+                              );
+                            }
+                          } catch (e) {
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text('Could not apply preset: $e'),
+                                  backgroundColor: Colors.red,
+                                ),
+                              );
+                            }
+                          }
+                        },
+                  icon: const Icon(Icons.local_florist_outlined),
+                  label: const Text('Apply basil defaults'),
+                ),
+              ],
+            ),
+          ),
+        ),
         OutlinedButton.icon(
           onPressed: () => _showAddThresholdDialog(context, deviceProvider),
           icon: const Icon(Icons.add),
@@ -892,6 +940,20 @@ class _AlertsScreenState extends State<AlertsScreen>
     if (deviceProvider.selectedDevice == null) return;
     final device = deviceProvider.selectedDevice!;
 
+    final availableMetrics = _thresholdMetrics
+        .where((m) => !deviceProvider.thresholds.any((t) => t['metric'] == m['key']))
+        .toList();
+
+    if (availableMetrics.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('All metrics already have thresholds — use the edit button on any card to adjust them.'),
+          duration: Duration(seconds: 4),
+        ),
+      );
+      return;
+    }
+
     String? selectedMetric;
     final minController = TextEditingController();
     final maxController = TextEditingController();
@@ -908,14 +970,52 @@ class _AlertsScreenState extends State<AlertsScreen>
               children: [
                 DropdownButtonFormField<String>(
                   value: selectedMetric,
-                  decoration: const InputDecoration(labelText: 'Metric'),
-                  items: _thresholdMetrics
-                      .where((m) => !deviceProvider.thresholds.any((t) => t['metric'] == m['key']))
+                  isExpanded: true,
+                  menuMaxHeight: 300,
+                  decoration: const InputDecoration(
+                    labelText: 'Metric',
+                    hintText: 'Select a metric',
+                  ),
+                  items: availableMetrics
                       .map((m) => DropdownMenuItem(value: m['key']!, child: Text(m['label']!)))
                       .toList(),
                   onChanged: (v) => setState(() => selectedMetric = v),
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 4),
+                Text(
+                  'Alert fires when the reading goes below Min or above Max.',
+                  style: Theme.of(ctx).textTheme.bodySmall?.copyWith(color: Theme.of(ctx).hintColor),
+                ),
+                if (selectedMetric != null) ...[
+                  const SizedBox(height: 8),
+                  if (selectedMetric == 'fan_duty')
+                    Text(
+                      'Fan duty is a 0–100 % actuator value. Set Min to alert when ventilation is running below a target, or Max when it is unexpectedly high.',
+                      style: Theme.of(ctx).textTheme.bodySmall?.copyWith(color: Theme.of(ctx).hintColor),
+                    )
+                  else
+                    TextButton.icon(
+                      icon: const Icon(Icons.auto_fix_high, size: 16),
+                      label: const Text('Fill from recent data'),
+                      style: TextButton.styleFrom(
+                        padding: EdgeInsets.zero,
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      ),
+                      onPressed: () {
+                        final (sugMin, sugMax) = deviceProvider.suggestBoundsForMetric(selectedMetric!);
+                        setState(() {
+                          if (sugMin != null) minController.text = sugMin.toString();
+                          if (sugMax != null) maxController.text = sugMax.toString();
+                        });
+                        if (sugMin == null && sugMax == null) {
+                          ScaffoldMessenger.of(ctx).showSnackBar(
+                            const SnackBar(content: Text('No recent data available for this metric yet')),
+                          );
+                        }
+                      },
+                    ),
+                ],
+                const SizedBox(height: 8),
                 TextField(
                   controller: minController,
                   decoration: const InputDecoration(labelText: 'Min value (optional)'),
@@ -980,7 +1080,13 @@ class _AlertsScreenState extends State<AlertsScreen>
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Text('Metric: ${t['metric']}', style: Theme.of(ctx).textTheme.titleSmall),
+                Text(
+                  _thresholdMetrics.firstWhere(
+                    (m) => m['key'] == t['metric'],
+                    orElse: () => {'label': t['metric'] as String? ?? ''},
+                  )['label']!,
+                  style: Theme.of(ctx).textTheme.titleSmall,
+                ),
                 const SizedBox(height: 16),
                 TextField(
                   controller: minController,

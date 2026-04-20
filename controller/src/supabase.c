@@ -296,11 +296,13 @@ int supabase_fetch_thresholds(supabase_config_t *config, device_threshold_t **ou
             snprintf(arr[i].id, sizeof(arr[i].id), "%s", json_object_get_string(id_o));
         if (json_object_object_get_ex(obj, "metric", &metric_o))
             snprintf(arr[i].metric, sizeof(arr[i].metric), "%s", json_object_get_string(metric_o));
-        if (json_object_object_get_ex(obj, "min_value", &min_o))
+        if (json_object_object_get_ex(obj, "min_value", &min_o) &&
+            json_object_get_type(min_o) != json_type_null)
             arr[i].min_value = json_object_get_double(min_o);
         else
             arr[i].min_value = -1e9;
-        if (json_object_object_get_ex(obj, "max_value", &max_o))
+        if (json_object_object_get_ex(obj, "max_value", &max_o) &&
+            json_object_get_type(max_o) != json_type_null)
             arr[i].max_value = json_object_get_double(max_o);
         else
             arr[i].max_value = 1e9;
@@ -512,3 +514,70 @@ int supabase_update_schedule_last_run(supabase_config_t *config, const char *sch
     return 0;
 }
 
+
+/*
+ * Upsert device_actuator_state (POST with Prefer: resolution=merge-duplicates).
+ * Pass -1 for any field to omit it from the body.
+ */
+int supabase_update_actuator_state(supabase_config_t *config,
+                                   int lights_on, int pump_on, int fan_duty,
+                                   int bme_ok, int soil_ok)
+{
+    if (!config || !config->api_url || !config->api_key || !config->device_id)
+        return -1;
+    if (!curl_handle)
+        return -1;
+
+    time_t now_t = time(NULL);
+    struct tm *tm_info = gmtime(&now_t);
+    char timestamp_str[64];
+    strftime(timestamp_str, sizeof(timestamp_str), "%Y-%m-%dT%H:%M:%SZ", tm_info);
+
+    json_object *body = json_object_new_object();
+    json_object_object_add(body, "device_id", json_object_new_string(config->device_id));
+    json_object_object_add(body, "updated_at", json_object_new_string(timestamp_str));
+
+    if (lights_on >= 0)
+        json_object_object_add(body, "lights_on", json_object_new_boolean(lights_on));
+    if (pump_on >= 0)
+        json_object_object_add(body, "pump_on", json_object_new_boolean(pump_on));
+    if (fan_duty >= 0)
+        json_object_object_add(body, "fan_duty", json_object_new_int(fan_duty));
+    if (bme_ok >= 0)
+        json_object_object_add(body, "bme_ok", json_object_new_boolean(bme_ok));
+    if (soil_ok >= 0)
+        json_object_object_add(body, "soil_ok", json_object_new_boolean(soil_ok));
+
+    const char *json_string = json_object_to_json_string(body);
+
+    char url[512];
+    snprintf(url, sizeof(url), "%s/rest/v1/device_actuator_state", config->api_url);
+
+    struct curl_slist *headers = NULL;
+    char apikey_header[256];
+    char auth_header[256];
+    snprintf(apikey_header, sizeof(apikey_header), "apikey: %s", config->api_key);
+    snprintf(auth_header, sizeof(auth_header), "Authorization: Bearer %s", config->api_key);
+    headers = curl_slist_append(headers, apikey_header);
+    headers = curl_slist_append(headers, auth_header);
+    headers = curl_slist_append(headers, "Content-Type: application/json");
+    headers = curl_slist_append(headers, "Prefer: resolution=merge-duplicates,return=minimal");
+
+    curl_easy_setopt(curl_handle, CURLOPT_URL, url);
+    curl_easy_setopt(curl_handle, CURLOPT_POSTFIELDS, json_string);
+    curl_easy_setopt(curl_handle, CURLOPT_HTTPHEADER, headers);
+    curl_easy_setopt(curl_handle, CURLOPT_POST, 1L);
+
+    CURLcode res_act = curl_easy_perform(curl_handle);
+    long rc_act = 0;
+    curl_easy_getinfo(curl_handle, CURLINFO_RESPONSE_CODE, &rc_act);
+    curl_slist_free_all(headers);
+    json_object_put(body);
+
+    if (res_act != CURLE_OK || rc_act < 200 || rc_act >= 300)
+    {
+        fprintf(stderr, "  [ActuatorState] Failed to upsert (http=%ld)\n", rc_act);
+        return -1;
+    }
+    return 0;
+}

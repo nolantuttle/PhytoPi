@@ -72,7 +72,9 @@ def summarize(vt_id, csv_path):
     spec_v = SPEC.get(vt_id)
     spec_str = f"{spec_v}ms" if spec_v else "—"
 
-    if passes == n:
+    if n == 0:
+        status = "NO DATA"
+    elif passes == n:
         status = "PASS"
     elif fails == n:
         status = "FAIL"
@@ -116,8 +118,8 @@ def main():
     print(sep)
     for s in summaries:
         print(fmt.format(
-            s["vt"], s["n"], s["pass"], s["fail"],
-            s["rate"], s["mean"], s["p95"], s["spec"], s["status"]
+            str(s["vt"]), str(s["n"]), str(s["pass"]), str(s["fail"]),
+            str(s["rate"]), str(s["mean"]), str(s["p95"]), str(s["spec"]), str(s["status"])
         ))
     print(sep)
     print()

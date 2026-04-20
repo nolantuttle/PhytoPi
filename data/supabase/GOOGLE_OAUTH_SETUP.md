@@ -33,7 +33,7 @@ export SUPABASE_AUTH_EXTERNAL_GOOGLE_CLIENT_SECRET="your-client-secret"
 
 **Option B – use a `.env` file in the Supabase directory**
 
-Create `Data_Infraestructure/supabase/.env` (and add it to `.gitignore` if not already):
+Create `data/supabase/.env` (and add it to `.gitignore` if not already):
 
 ```bash
 SUPABASE_AUTH_EXTERNAL_GOOGLE_CLIENT_ID=your-client-id.apps.googleusercontent.com
@@ -43,7 +43,7 @@ SUPABASE_AUTH_EXTERNAL_GOOGLE_CLIENT_SECRET=your-client-secret
 Then load it when starting Supabase, e.g.:
 
 ```bash
-cd Data_Infraestructure/supabase
+cd data/supabase
 set -a && source .env && set +a
 supabase start
 ```
@@ -57,7 +57,7 @@ Set the same two variables in the environment that runs `supabase start`.
 After enabling Google in `config.toml` and setting the env vars, restart so Auth picks up the change:
 
 ```bash
-cd Data_Infraestructure/supabase
+cd data/supabase
 supabase stop
 supabase start
 ```

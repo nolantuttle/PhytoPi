@@ -12,14 +12,14 @@ if [ -d "$PROJECT_ROOT/infra/supabase" ]; then
     SUPABASE_DIR="$PROJECT_ROOT/infra/supabase"
 elif [ -d "$REPO_ROOT/infra/supabase" ]; then
     SUPABASE_DIR="$(cd "$REPO_ROOT/infra/supabase" && pwd)"
-elif [ -d "$REPO_ROOT/Data_Infraestructure/supabase" ]; then
-    SUPABASE_DIR="$(cd "$REPO_ROOT/Data_Infraestructure/supabase" && pwd)"
+elif [ -d "$REPO_ROOT/data/supabase" ]; then
+    SUPABASE_DIR="$(cd "$REPO_ROOT/data/supabase" && pwd)"
 else
     echo "❌ Could not find Supabase directory."
     echo "   Checked:"
     echo "     - $PROJECT_ROOT/infra/supabase"
     echo "     - $REPO_ROOT/infra/supabase"
-    echo "     - $REPO_ROOT/Data_Infraestructure/supabase"
+    echo "     - $REPO_ROOT/data/supabase"
     echo ""
     echo "💡 Ensure you have the infra submodule checked out, or update run_local.sh."
     exit 1

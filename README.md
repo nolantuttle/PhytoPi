@@ -188,8 +188,7 @@ It does **not** run `supabase db push` or deploy Edge Functions—you still do *
 ```
 PhytoPi/
 ├── user_interface/          # Flutter Dashboard (Web, Mobile, Kiosk)
-├── controller/       # Raspberry Pi controller sources (Docker build context for Pi stack)
-├── controller/              # Same controller tree tracked in git (keep in sync with controller when developing)
+├── controller/              # Raspberry Pi controller sources (Docker build context for Pi stack)
 ├── data/supabase/           # Supabase config, migrations, Edge Functions
 └── systemd/                 # Boot units for Docker stack + native kiosk UI
 ```
